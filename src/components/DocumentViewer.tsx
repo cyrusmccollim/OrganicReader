@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { LibraryFile } from '../types';
+import { LibraryFile, ViewerHandle } from '../types';
 import { PdfViewer } from './PdfViewer';
 import { DocxViewer } from './DocxViewer';
 import { TxtViewer } from './TxtViewer';
@@ -9,13 +9,15 @@ import { useTheme } from '../ThemeContext';
 
 interface Props {
   file: LibraryFile;
+  onSearchResult?: (count: number, current: number) => void;
+  onViewerMessage?: (msg: Record<string, any>) => void;
 }
 
-export function DocumentViewer({ file }: Props) {
+export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, onSearchResult, onViewerMessage }, ref) => {
   const { theme } = useTheme();
 
   if (!file.uri) {
-    // Mock file — no real URI; show a placeholder matching the Speechify aesthetic
+    // Mock file - no real URI
     return (
       <View style={[styles.placeholder, { backgroundColor: theme.colors.surface }]}>
         <Text style={[styles.placeholderEmoji]}>{file.thumbnail}</Text>
@@ -30,13 +32,13 @@ export function DocumentViewer({ file }: Props) {
   }
 
   switch (file.type) {
-    case 'PDF':  return <PdfViewer uri={file.uri} />;
-    case 'DOCX': return <DocxViewer uri={file.uri} />;
-    case 'TXT':  return <TxtViewer uri={file.uri} />;
-    case 'EPUB': return <EpubViewer uri={file.uri} />;
-    default:     return <TxtViewer uri={file.uri} />;
+    case 'PDF':  return <PdfViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+    case 'DOCX': return <DocxViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+    case 'TXT':  return <TxtViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+    case 'EPUB': return <EpubViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+    default:     return <TxtViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
   }
-}
+});
 
 const styles = StyleSheet.create({
   placeholder: {

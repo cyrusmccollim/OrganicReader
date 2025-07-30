@@ -1,5 +1,5 @@
 /**
- * AsyncStorageInit — ensures AsyncStorage is properly initialized before use.
+ * AsyncStorageInit - ensures AsyncStorage is properly initialized before use.
  * 
  * This module handles the case where the AsyncStorage native module may not be
  * immediately available when the app starts (e.g., on cold starts or after rebuilds).

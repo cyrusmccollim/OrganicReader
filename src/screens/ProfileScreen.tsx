@@ -28,7 +28,7 @@ interface Props {
   onBack: () => void;
 }
 
-export function UserProfileScreen({ onBack }: Props) {
+export function ProfileScreen({ onBack }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -412,4 +412,4 @@ function makeStyles(theme: Theme) {
   });
 }
 
-export default UserProfileScreen;
+export default ProfileScreen;

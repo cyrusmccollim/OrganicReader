@@ -1,5 +1,5 @@
 /**
- * SettingsRepository — local implementation of the app settings data layer.
+ * SettingsRepository - local implementation of the app settings data layer.
  *
  * Architecture note
  * -----------------
@@ -57,7 +57,7 @@ async function save(settings: AppSettings): Promise<void> {
     await AsyncStorage.setItem(StorageKeys.SETTINGS, JSON.stringify(settings));
   } catch (error) {
     console.warn('Settings save failed:', error);
-    // Silently fail — settings will just not persist across reloads
+    // Silently fail - settings will just not persist across reloads
   }
 }
 

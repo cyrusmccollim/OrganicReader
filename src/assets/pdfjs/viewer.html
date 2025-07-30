@@ -2,103 +2,165 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes" />
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: transparent; overflow-x: hidden; }
-    #viewer {
-      width: 100%;
-      padding: 0;
-    }
-    canvas {
-      display: block;
-      width: 100% !important;
-      height: auto !important;
-      margin-bottom: 8px;
-    }
-    #error {
-      color: #ff6b6b;
-      padding: 20px;
-      font-family: sans-serif;
-      font-size: 14px;
-    }
-    #loading {
-      color: #888;
-      padding: 20px;
-      font-family: sans-serif;
-      font-size: 14px;
-      text-align: center;
-    }
-  </style>
 </head>
 <body>
-  <div id="loading">Loading document…</div>
-  <div id="error" style="display:none"></div>
-  <div id="viewer"></div>
-
   <script type="module">
     import * as pdfjsLib from './pdf.min.mjs';
 
+    // Must be the exact filename - an empty string causes PDF.js 5.x to attempt
+    // a dynamic import() which fails silently inside an Android WebView.
     pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.mjs';
 
-    let bgColor = '#ffffff';
-    let textColor = '#1a1a1a';
+    // ── Line reconstruction helpers ──────────────────────────────────────────
+
+    // Group PDF text items into reading-order lines.
+    // PDF coordinates: Y=0 is the bottom of the page, increasing upward.
+    // Items within the same visual line share nearly the same Y coordinate.
+    function groupItemsIntoLines(items) {
+      if (items.length === 0) return [];
+
+      // Sort top-to-bottom (descending Y), then left-to-right within same Y.
+      items.sort((a, b) => {
+        const dy = b.y - a.y;
+        if (Math.abs(dy) > 1) return dy;
+        return a.x - b.x;
+      });
+
+      // Threshold: items within half the median font height belong to the same line.
+      const heights = items.map(i => i.h).filter(h => h > 0).sort((a, b) => a - b);
+      const medH = heights.length > 0 ? heights[Math.floor(heights.length / 2)] : 12;
+      const threshold = Math.max(3, medH * 0.5);
+
+      const lines = [];
+      let currentLine = [];
+      let anchorY = null;
+
+      for (const item of items) {
+        if (anchorY === null || Math.abs(item.y - anchorY) > threshold) {
+          if (currentLine.length > 0) lines.push(currentLine);
+          currentLine = [item];
+          anchorY = item.y;
+        } else {
+          currentLine.push(item);
+        }
+      }
+      if (currentLine.length > 0) lines.push(currentLine);
+
+      return lines;
+    }
+
+    // Detect whether two consecutive lines have an unusually large gap between
+    // them - indicating a paragraph break rather than just a line break.
+    // "Large gap" = more than 1.5× the median line spacing for this page.
+    function computeLineGaps(lines) {
+      if (lines.length < 2) return [];
+      // Representative Y for each line (anchor = first item's Y after sort).
+      const ys = lines.map(line => line[0].y);
+      const gaps = [];
+      for (let i = 0; i < ys.length - 1; i++) {
+        gaps.push(Math.abs(ys[i] - ys[i + 1]));
+      }
+      return gaps;
+    }
+
+    function medianOf(arr) {
+      if (arr.length === 0) return 0;
+      const sorted = [...arr].sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length / 2)];
+    }
+
+    // ── Text extraction ──────────────────────────────────────────────────────
 
     function base64ToUint8Array(base64) {
       const binary = atob(base64);
-      const len = binary.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+      const bytes  = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       return bytes;
     }
 
-    async function renderPdf(data) {
-      const loading = document.getElementById('loading');
-      const errorDiv = document.getElementById('error');
-      const viewer = document.getElementById('viewer');
-
+    async function extractText(base64) {
       try {
-        const pdf = await pdfjsLib.getDocument({ data }).promise;
-        loading.style.display = 'none';
+        const data = base64ToUint8Array(base64);
+        const loadingTask = pdfjsLib.getDocument({ data });
+        const pdf = await loadingTask.promise;
+        const totalPages = pdf.numPages;
+        const pageTexts = [];
 
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: window.devicePixelRatio || 2 });
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-          canvas.style.background = bgColor;
-          viewer.appendChild(canvas);
-          await page.render({ canvasContext: ctx, viewport }).promise;
+          const tc = await page.getTextContent();
+
+          // Collect items with position data.
+          const items = [];
+          for (const item of tc.items) {
+            if (!('str' in item)) continue;
+            const str = item.str;
+            if (str === '') continue;
+            items.push({
+              str,
+              x: item.transform[4],
+              y: item.transform[5],
+              // height: prefer item.height; fall back to transform scale
+              h: item.height > 0 ? item.height : Math.abs(item.transform[3]) || 12,
+            });
+          }
+
+          if (items.length === 0) {
+            pageTexts.push('');
+            continue;
+          }
+
+          const lines = groupItemsIntoLines(items);
+          const gaps = computeLineGaps(lines);
+          const medGap = medianOf(gaps);
+          // A gap > 1.8× the median gap indicates a visual blank line / new paragraph.
+          const paraGapThreshold = medGap * 1.8;
+
+          const pageLines = [];
+          for (let i = 0; i < lines.length; i++) {
+            // Sort left-to-right within the line and join.
+            const lineText = lines[i]
+              .sort((a, b) => a.x - b.x)
+              .map(it => it.str)
+              .join('')
+              .trim();
+
+            if (!lineText) continue;
+            pageLines.push(lineText);
+
+            // Insert blank line between paragraphs.
+            if (i < gaps.length && gaps[i] > paraGapThreshold) {
+              pageLines.push('');
+            }
+          }
+
+          pageTexts.push(pageLines.join('\n'));
         }
 
-        document.body.style.background = bgColor;
-
-        // Report total pages back to RN
-        window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready', pages: pdf.numPages }));
+        window.ReactNativeWebView?.postMessage(JSON.stringify({
+          type: 'textExtracted',
+          text: pageTexts.join('\n\n'),
+          pages: totalPages,
+        }));
       } catch (e) {
-        loading.style.display = 'none';
-        errorDiv.style.display = 'block';
-        errorDiv.textContent = 'Failed to load PDF: ' + e.message;
-        window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'error', message: e.message }));
+        window.ReactNativeWebView?.postMessage(JSON.stringify({
+          type: 'error',
+          message: String(e?.message ?? e),
+        }));
       }
     }
 
-    function handleMessage(data) {
+    window.handleMessage = function(data) {
       try {
-        const msg = JSON.parse(data);
-        if (msg.type === 'load') {
-          if (msg.bgColor) { bgColor = msg.bgColor; textColor = msg.textColor || '#1a1a1a'; }
-          document.body.style.background = bgColor;
-          const uint8 = base64ToUint8Array(msg.base64);
-          renderPdf(uint8);
+        const msg = typeof data === 'string' ? JSON.parse(data) : data;
+        if (msg.type === 'load' && msg.base64) {
+          extractText(msg.base64);
         }
       } catch {}
-    }
+    };
 
-    window.addEventListener('message', (event) => handleMessage(event.data));
-    document.addEventListener('message', (event) => handleMessage(event.data));
+    window.addEventListener('message', e => window.handleMessage(e.data));
+    document.addEventListener('message', e => window.handleMessage(e.data));
   </script>
 </body>
 </html>

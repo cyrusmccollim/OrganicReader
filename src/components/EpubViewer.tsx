@@ -1,48 +1,54 @@
-import React, { useRef } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
-import WebView from 'react-native-webview';
+import React, { forwardRef, useMemo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../ThemeContext';
-
-const { resolveAssetSource } = Image;
-const HTML_ASSET = resolveAssetSource(require('../assets/epubjs/viewer.html'));
+import { Theme } from '../theme';
+import { ViewerHandle } from '../types';
 
 interface Props {
   uri: string;
+  onSearchResult?: (count: number, current: number) => void;
+  onViewerMessage?: (msg: Record<string, any>) => void;
 }
 
-export function EpubViewer({ uri }: Props) {
-  const { theme } = useTheme();
-  const webViewRef = useRef<WebView>(null);
-
-  const onLoad = () => {
-    webViewRef.current?.postMessage(JSON.stringify({
-      type: 'load',
-      uri,
-      bgColor: theme.colors.darkBg,
-      textColor: theme.colors.textPrimary,
+export const EpubViewer = forwardRef<ViewerHandle, Props>(
+  (_props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      search:      () => {},
+      searchNext:  () => {},
+      searchPrev:  () => {},
+      clearSearch: () => {},
     }));
-  };
 
-  return (
-    <View style={styles.container}>
-      <WebView
-        ref={webViewRef}
-        source={{ uri: HTML_ASSET.uri }}
-        style={[styles.webview, { backgroundColor: theme.colors.darkBg }]}
-        originWhitelist={['*']}
-        allowFileAccess
-        allowUniversalAccessFromFileURLs
-        allowFileAccessFromFileURLs
-        mixedContentMode="always"
-        onLoad={onLoad}
-        scrollEnabled
-        showsVerticalScrollIndicator={false}
-      />
-    </View>
-  );
+    const { theme } = useTheme();
+    const styles = useMemo(() => makeStyles(theme), [theme]);
+
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.darkBg }]}>
+        <Text style={styles.title}>EPUB Viewer</Text>
+        <Text style={styles.subtitle}>Coming soon</Text>
+      </View>
+    );
+  },
+);
+
+function makeStyles(theme: Theme) {
+  const { colors, spacing } = theme;
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    subtitle: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.textSecondary,
+    },
+  });
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  webview: { flex: 1 },
-});

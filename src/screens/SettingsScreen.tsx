@@ -8,9 +8,12 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  Animated,
 } from 'react-native';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useTheme } from '../ThemeContext';
 import { ACCENT_COLORS, Theme } from '../theme';
+import { useAuth } from '../context/AuthContext';
 import {
   ArrowRight01Icon,
   Clock01Icon,
@@ -23,18 +26,31 @@ import {
   InformationCircleIcon,
   UserCircleIcon,
   CheckmarkCircle01Icon,
+  Login01Icon,
 } from 'hugeicons-react-native';
 
 const DAILY_GOALS = ['30 min', '1 hr', '1.5 hr', '2 hr', '3 hr', 'No limit'];
 
-export function SettingsScreen({ onShowProfile }: { onShowProfile: () => void }) {
+interface Props {
+  onShowProfile: () => void;
+  onShowDeletedFiles: () => void;
+  onShowSignIn: () => void;
+}
+
+export function SettingsScreen({ onShowProfile, onShowDeletedFiles, onShowSignIn }: Props) {
   const { theme, isDark, setIsDark, accent, setAccent } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { isSignedIn, user } = useAuth();
 
   const [suggestions, setSuggestions] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [dailyGoal, setDailyGoal] = useState('1 hr');
   const [showGoalPicker, setShowGoalPicker] = useState(false);
+  const { translateY: goalTY, panResponder: goalPR } = useSwipeToDismiss(() => setShowGoalPicker(false));
+
+  const initials = user?.name
+    ? user.name.split(' ').map((p) => p[0]).join('').toUpperCase().slice(0, 2)
+    : '';
 
   return (
     <>
@@ -47,20 +63,40 @@ export function SettingsScreen({ onShowProfile }: { onShowProfile: () => void })
           <Text style={styles.headerTitle}>Settings</Text>
         </View>
 
-        {/* Profile */}
+        {/* Profile - conditional on auth state */}
         <Text style={styles.sectionTitle}>PROFILE</Text>
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.profileRow} onPress={onShowProfile}>
-            <View style={styles.avatarSmall}>
-              <UserCircleIcon size={42} color={theme.colors.primary} />
+        {isSignedIn && user ? (
+          <View style={styles.card}>
+            <TouchableOpacity style={styles.profileRow} onPress={onShowProfile}>
+              <View style={[styles.avatarSmall, { backgroundColor: theme.colors.surface, borderColor: theme.colors.primary }]}>
+                <Text style={[styles.avatarInitials, { color: theme.colors.primary }]}>{initials}</Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{user.name}</Text>
+                <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
+              </View>
+              <ArrowRight01Icon size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <View style={styles.signedOutRow}>
+              <UserCircleIcon size={40} color={theme.colors.textSecondary} />
+              <View style={styles.signedOutText}>
+                <Text style={styles.signedOutTitle}>Not signed in</Text>
+                <Text style={styles.signedOutSubtitle}>Sign in to sync your library.</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.signInBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={onShowSignIn}
+                activeOpacity={0.82}
+              >
+                <Login01Icon size={16} color={theme.colors.darkBg} />
+                <Text style={[styles.signInBtnText, { color: theme.colors.darkBg }]}>Sign In</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>Example</Text>
-              <Text style={styles.profileEmail}>example@mail.com</Text>
-            </View>
-            <ArrowRight01Icon size={20} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
+          </View>
+        )}
 
         {/* Reading */}
         <Text style={styles.sectionTitle}>READING</Text>
@@ -146,7 +182,7 @@ export function SettingsScreen({ onShowProfile }: { onShowProfile: () => void })
             />
           </View>
           <View style={styles.sep} />
-          <TouchableOpacity style={styles.row}>
+          <TouchableOpacity style={styles.row} onPress={onShowDeletedFiles}>
             <View style={styles.rowLeft}>
               <Delete01Icon size={18} color={theme.colors.primary} />
               <Text style={styles.rowLabel}>Deleted Files</Text>
@@ -190,9 +226,16 @@ export function SettingsScreen({ onShowProfile }: { onShowProfile: () => void })
       </ScrollView>
 
       {/* Daily Goal Picker */}
-      <Modal visible={showGoalPicker} transparent animationType="slide">
+      <Modal visible={showGoalPicker} transparent animationType="slide" onRequestClose={() => setShowGoalPicker(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowGoalPicker(false)}>
-          <View style={styles.modalSheet}>
+          <Animated.View
+            style={[styles.modalSheet, { transform: [{ translateY: goalTY }] }]}
+            {...goalPR.panHandlers}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.modalHandleWrap}>
+              <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
+            </View>
             <Text style={styles.modalTitle}>Daily Reading Goal</Text>
             {DAILY_GOALS.map((g) => (
               <TouchableOpacity
@@ -208,7 +251,7 @@ export function SettingsScreen({ onShowProfile }: { onShowProfile: () => void })
                 )}
               </TouchableOpacity>
             ))}
-          </View>
+          </Animated.View>
         </Pressable>
       </Modal>
     </>
@@ -216,11 +259,11 @@ export function SettingsScreen({ onShowProfile }: { onShowProfile: () => void })
 }
 
 function makeStyles(theme: Theme) {
-  const { colors } = theme;
+  const { colors, spacing, borderRadius } = theme;
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.darkBg },
-    scrollContent: { padding: 16, paddingBottom: 40 },
-    headerRow: { alignItems: 'center', marginTop: 24, marginBottom: 20 },
+    scrollContent: { padding: spacing.lg, paddingBottom: 40 },
+    headerRow: { alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.lg },
     headerTitle: { fontSize: 22, fontWeight: '700', color: colors.primary },
     sectionTitle: {
       color: colors.textSecondary,
@@ -233,11 +276,12 @@ function makeStyles(theme: Theme) {
     },
     card: {
       backgroundColor: colors.surface,
-      borderRadius: 12,
+      borderRadius: borderRadius.md,
       paddingVertical: 4,
-      marginBottom: 20,
+      marginBottom: spacing.lg,
       overflow: 'hidden',
     },
+    // Signed-in profile row
     profileRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -245,10 +289,39 @@ function makeStyles(theme: Theme) {
       paddingHorizontal: 12,
       gap: 12,
     },
-    avatarSmall: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
+    avatarSmall: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1.5,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarInitials: { fontSize: 16, fontWeight: '700' },
     profileInfo: { flex: 1 },
-    profileName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-    profileEmail: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+    profileName: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+    profileEmail: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+    // Signed-out profile row
+    signedOutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+      gap: 12,
+    },
+    signedOutText: { flex: 1 },
+    signedOutTitle: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+    signedOutSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+    signInBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: borderRadius.sm,
+    },
+    signInBtnText: { fontSize: 13, fontWeight: '700' },
+    // Generic rows
     row: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -260,7 +333,7 @@ function makeStyles(theme: Theme) {
     rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     rowLabel: { fontSize: 15, color: colors.textPrimary, fontWeight: '500' },
     rowValue: { fontSize: 14, color: colors.textSecondary },
-    sep: { height: 1, backgroundColor: colors.border, marginLeft: 14 },
+    sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 14 },
     // Accent color picker
     accentSection: {
       flexDirection: 'row',
@@ -269,11 +342,7 @@ function makeStyles(theme: Theme) {
       paddingVertical: 12,
       paddingHorizontal: 14,
     },
-    swatchRow: {
-      flexDirection: 'row',
-      gap: 10,
-      paddingLeft: 20,
-    },
+    swatchRow: { flexDirection: 'row', gap: 10, paddingLeft: 20 },
     swatch: {
       width: 24,
       height: 24,
@@ -281,17 +350,13 @@ function makeStyles(theme: Theme) {
       justifyContent: 'center',
       alignItems: 'center',
     },
-    swatchSelected: {
-      borderWidth: 2,
-      borderColor: colors.textPrimary,
-    },
+    swatchSelected: { borderWidth: 2, borderColor: colors.textPrimary },
     swatchDot: {
       width: 6,
       height: 6,
       borderRadius: 3,
       backgroundColor: 'rgba(255,255,255,0.9)',
     },
-    // Footer
     footer: {
       textAlign: 'center',
       color: colors.textSecondary,
@@ -309,14 +374,24 @@ function makeStyles(theme: Theme) {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
-      padding: 24,
+      paddingHorizontal: spacing.xl,
+      paddingTop: 0,
       paddingBottom: 40,
+    },
+    modalHandleWrap: {
+      paddingTop: 14, paddingBottom: 8,
+      alignItems: 'center',
+    },
+    modalHandle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
     },
     modalTitle: {
       fontSize: 17,
       fontWeight: '700',
       color: colors.textPrimary,
-      marginBottom: 16,
+      marginBottom: spacing.md,
       textAlign: 'center',
     },
     modalOption: {
@@ -325,7 +400,7 @@ function makeStyles(theme: Theme) {
       alignItems: 'center',
       paddingVertical: 16,
       paddingHorizontal: 4,
-      borderBottomWidth: 1,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
     modalOptionText: { fontSize: 16, color: colors.textPrimary },

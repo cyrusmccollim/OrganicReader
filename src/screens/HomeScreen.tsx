@@ -4,14 +4,17 @@ import { useTheme } from '../ThemeContext';
 import { Theme } from '../theme';
 import { LibraryFile } from '../types';
 import { useLibrary } from '../context/LibraryContext';
+import { useAuth } from '../context/AuthContext';
 import { useDocumentPicker } from '../hooks/useDocumentPicker';
+import { formatLastOpened } from '../utils/formatDate';
+import { getUserInitials, calculateReadingTime, calculateStreak } from '../utils/readingStats';
 import {
   Folder01Icon,
-  CloudIcon,
-  Edit02Icon,
+  KeyboardIcon,
+  Camera01Icon,
+  Image01Icon,
   Link02Icon,
-  CloudUploadIcon,
-  Download01Icon,
+  GridIcon,
   FireIcon,
   Clock01Icon,
   BookOpen01Icon,
@@ -24,12 +27,12 @@ interface ImportOption {
 }
 
 const importOptions: ImportOption[] = [
-  { id: 'files',    label: 'Files',        IconComponent: Folder01Icon },
-  { id: 'gdrive',   label: 'Google Drive', IconComponent: CloudIcon },
-  { id: 'text',     label: 'Type / Scan',  IconComponent: Edit02Icon },
-  { id: 'link',     label: 'Link',         IconComponent: Link02Icon },
-  { id: 'onedrive', label: 'OneDrive',     IconComponent: CloudUploadIcon },
-  { id: 'dropbox',  label: 'Dropbox',      IconComponent: Download01Icon },
+  { id: 'files',  label: 'Files',  IconComponent: Folder01Icon },
+  { id: 'type',   label: 'Type',   IconComponent: KeyboardIcon },
+  { id: 'scan',   label: 'Scan',   IconComponent: Camera01Icon },
+  { id: 'photos', label: 'Photos', IconComponent: Image01Icon },
+  { id: 'link',   label: 'Link',   IconComponent: Link02Icon },
+  { id: 'more',   label: 'More',   IconComponent: GridIcon },
 ];
 
 const STREAK_DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -50,9 +53,17 @@ export function HomeScreen({ onOpenFile }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { files } = useLibrary();
+  const { user } = useAuth();
   const { pickDocument } = useDocumentPicker();
 
-  const continueReading = files.find(f => f.progress > 0 && f.progress < 1) ?? files[0];
+  const continueReading = useMemo(() => {
+    if (files.length === 0) return null;
+    return [...files].sort((a, b) => {
+      const dateA = a.lastOpenedAt ? new Date(a.lastOpenedAt).getTime() : 0;
+      const dateB = b.lastOpenedAt ? new Date(b.lastOpenedAt).getTime() : 0;
+      return dateB - dateA;
+    })[0];
+  }, [files]);
 
   const handleImport = async (id: string) => {
     if (id === 'files') {
@@ -73,10 +84,10 @@ export function HomeScreen({ onOpenFile }: Props) {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.appName}>OrganicReader</Text>
+          <Text style={styles.appName}>{user?.name?.split(' ')[0] || 'Reader'}</Text>
         </View>
         <View style={styles.avatarBubble}>
-          <Text style={styles.avatarInitials}>EX</Text>
+          <Text style={styles.avatarInitials}>{getUserInitials(user?.name)}</Text>
         </View>
       </View>
 
@@ -85,7 +96,7 @@ export function HomeScreen({ onOpenFile }: Props) {
         <View style={[styles.streakCard, { borderLeftColor: theme.colors.primary }]}>
           <View style={styles.streakTop}>
             <FireIcon size={20} color={theme.colors.primary} />
-            <Text style={styles.streakCount}>6</Text>
+            <Text style={styles.streakCount}>{calculateStreak(files)}</Text>
           </View>
           <Text style={styles.streakLabel}>Day Streak</Text>
           <View style={styles.streakDays}>
@@ -99,10 +110,12 @@ export function HomeScreen({ onOpenFile }: Props) {
                     : { backgroundColor: theme.colors.border },
                 ]}
               >
-                <Text style={[
-                  styles.streakDayLabel,
-                  { color: STREAK_ACTIVE[i] ? theme.colors.darkBg : theme.colors.textSecondary },
-                ]}>
+                <Text
+                  style={[
+                    styles.streakDayLabel,
+                    { color: STREAK_ACTIVE[i] ? theme.colors.darkBg : theme.colors.textSecondary },
+                  ]}
+                >
                   {day}
                 </Text>
               </View>
@@ -113,7 +126,7 @@ export function HomeScreen({ onOpenFile }: Props) {
         <View style={styles.statsCol}>
           <View style={[styles.statMini, { borderLeftColor: theme.colors.primary }]}>
             <Clock01Icon size={16} color={theme.colors.primary} />
-            <Text style={styles.statMiniValue}>12.5h</Text>
+            <Text style={styles.statMiniValue}>{calculateReadingTime(files)}</Text>
             <Text style={styles.statMiniLabel}>This week</Text>
           </View>
           <View style={[styles.statMini, { borderLeftColor: theme.colors.primaryLight }]}>
@@ -131,14 +144,20 @@ export function HomeScreen({ onOpenFile }: Props) {
           <TouchableOpacity
             style={styles.continueCard}
             activeOpacity={0.85}
-            onPress={() => continueReading && onOpenFile?.(continueReading)}
+            onPress={() => onOpenFile?.(continueReading)}
           >
             <View style={styles.continueThumbnail}>
               <Text style={styles.continueEmoji}>{continueReading.thumbnail}</Text>
             </View>
             <View style={styles.continueInfo}>
-              <Text style={styles.continueTitle} numberOfLines={1}>{continueReading.name}</Text>
-              <Text style={styles.continueAuthor}>{continueReading.type}</Text>
+              <View style={styles.continueTitleRow}>
+                <Text style={styles.continueTitle} numberOfLines={1}>{continueReading.name}</Text>
+                <Text style={styles.lastReadTime}>{formatLastOpened(continueReading.lastOpenedAt)}</Text>
+              </View>
+              <Text style={styles.continueAuthor}>
+                {continueReading.type}
+                {continueReading.bookmarks?.length > 0 && ` · ${continueReading.bookmarks.slice(-1)[0].label}`}
+              </Text>
               <View style={styles.progressBarTrack}>
                 <View
                   style={[
@@ -164,7 +183,7 @@ export function HomeScreen({ onOpenFile }: Props) {
       {/* Import */}
       <Text style={styles.sectionTitle}>Import</Text>
       <View style={styles.importGrid}>
-        {importOptions.map(opt => (
+        {importOptions.map((opt) => (
           <TouchableOpacity
             key={opt.id}
             style={styles.importBtn}
@@ -271,7 +290,9 @@ function makeStyles(theme: Theme) {
     },
     continueEmoji: { fontSize: 28 },
     continueInfo: { flex: 1, gap: 3 },
-    continueTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+    continueTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    continueTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, flex: 1, marginRight: 8 },
+    lastReadTime: { fontSize: 10, color: colors.textSecondary, fontWeight: '600' },
     continueAuthor: { fontSize: 12, color: colors.textSecondary },
     progressBarTrack: {
       height: 4,
