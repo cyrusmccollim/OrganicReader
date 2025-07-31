@@ -111,6 +111,9 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
+    // PDF text extraction (Tom Roush's PDFBox Android port)
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {

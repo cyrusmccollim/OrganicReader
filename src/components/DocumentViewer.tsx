@@ -1,11 +1,9 @@
-import React, { forwardRef } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { forwardRef, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { LibraryFile, ViewerHandle } from '../types';
-import { PdfViewer } from './PdfViewer';
-import { DocxViewer } from './DocxViewer';
 import { TxtViewer } from './TxtViewer';
-import { EpubViewer } from './EpubViewer';
 import { useTheme } from '../ThemeContext';
+import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
 
 interface Props {
   file: LibraryFile;
@@ -15,29 +13,60 @@ interface Props {
 
 export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, onSearchResult, onViewerMessage }, ref) => {
   const { theme } = useTheme();
+  const [extractedText, setExtractedText] = useState<string | undefined>(undefined);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file.uri || file.type === 'TXT') return;
+    setExtracting(true);
+    setExtractedText(undefined);
+    setExtractError(null);
+
+    const extractors: Record<string, (uri: string) => Promise<string>> = {
+      PDF: extractPdfText,
+      DOCX: extractDocxText,
+      EPUB: extractEpubText,
+    };
+    const fn = extractors[file.type];
+    if (!fn) { setExtracting(false); return; }
+
+    fn(file.uri)
+      .then(text => { setExtractedText(text); setExtracting(false); })
+      .catch(e => { setExtractError(String(e)); setExtracting(false); });
+  }, [file.uri, file.type]);
 
   if (!file.uri) {
-    // Mock file - no real URI
     return (
       <View style={[styles.placeholder, { backgroundColor: theme.colors.surface }]}>
-        <Text style={[styles.placeholderEmoji]}>{file.thumbnail}</Text>
-        <Text style={[styles.placeholderTitle, { color: theme.colors.textPrimary }]}>
-          {file.name}
-        </Text>
-        <Text style={[styles.placeholderSub, { color: theme.colors.textSecondary }]}>
-          Import this file to read it
-        </Text>
+        <Text style={styles.placeholderEmoji}>{file.thumbnail}</Text>
+        <Text style={[styles.placeholderTitle, { color: theme.colors.textPrimary }]}>{file.name}</Text>
+        <Text style={[styles.placeholderSub, { color: theme.colors.textSecondary }]}>Import this file to read it</Text>
       </View>
     );
   }
 
-  switch (file.type) {
-    case 'PDF':  return <PdfViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
-    case 'DOCX': return <DocxViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
-    case 'TXT':  return <TxtViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
-    case 'EPUB': return <EpubViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
-    default:     return <TxtViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+  if (file.type === 'TXT') {
+    return <TxtViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
   }
+
+  if (extractError) {
+    return (
+      <View style={[styles.placeholder, { backgroundColor: theme.colors.surface }]}>
+        <Text style={[styles.placeholderSub, { color: '#e05555' }]}>{extractError}</Text>
+      </View>
+    );
+  }
+
+  if (extracting || extractedText === undefined) {
+    return (
+      <View style={[styles.placeholder, { backgroundColor: theme.colors.surface }]}>
+        <ActivityIndicator color={theme.colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  return <TxtViewer ref={ref} text={extractedText} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
 });
 
 const styles = StyleSheet.create({
