@@ -5,11 +5,10 @@ import { Theme } from '../theme';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import {
   Folder01Icon,
-  CloudIcon,
   Edit02Icon,
   Link02Icon,
-  CloudUploadIcon,
-  Download01Icon,
+  Camera01Icon,
+  Image01Icon,
 } from 'hugeicons-react-native';
 
 interface ImportOption {
@@ -20,21 +19,22 @@ interface ImportOption {
 
 const importOptions: ImportOption[] = [
   { id: 'files',    label: 'Files',              IconComponent: Folder01Icon },
-  { id: 'gdrive',   label: 'Google Drive',        IconComponent: CloudIcon },
-  { id: 'text',     label: 'Type or paste text',  IconComponent: Edit02Icon },
-  { id: 'link',     label: 'Paste a link',        IconComponent: Link02Icon },
-  { id: 'onedrive', label: 'OneDrive',            IconComponent: CloudUploadIcon },
-  { id: 'dropbox',  label: 'Dropbox',             IconComponent: Download01Icon },
+  { id: 'text',     label: 'Type or paste text', IconComponent: Edit02Icon },
+  { id: 'link',     label: 'Paste a link',       IconComponent: Link02Icon },
+  { id: 'photos',   label: 'Photos',             IconComponent: Image01Icon },
+  { id: 'scan',     label: 'Scan',               IconComponent: Camera01Icon },
 ];
 
 export default function CreateModal({
   visible,
   onClose,
   onPickFiles,
+  onSelectOption,
 }: {
   visible: boolean;
   onClose: () => void;
   onPickFiles?: () => void;
+  onSelectOption?: (id: string) => void;
 }) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -45,6 +45,9 @@ export default function CreateModal({
     if (id === 'files') {
       // Small delay so the modal dismiss animation finishes before the native picker opens
       setTimeout(() => onPickFiles?.(), 300);
+    } else {
+      // Other options are handled by parent via onSelectOption
+      setTimeout(() => onSelectOption?.(id), 300);
     }
   };
 

@@ -47,9 +47,10 @@ function getGreeting() {
 
 interface Props {
   onOpenFile?: (file: LibraryFile) => void;
+  onSelectOption?: (id: string) => void;
 }
 
-export function HomeScreen({ onOpenFile }: Props) {
+export function HomeScreen({ onOpenFile, onSelectOption }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { files } = useLibrary();
@@ -71,6 +72,8 @@ export function HomeScreen({ onOpenFile }: Props) {
       if (file && onOpenFile) {
         onOpenFile(file);
       }
+    } else {
+      onSelectOption?.(id);
     }
   };
 

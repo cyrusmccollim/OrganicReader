@@ -17,8 +17,10 @@ import { Theme } from '../theme';
 import { LibraryFile, Bookmark, ViewerHandle } from '../types';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { DocumentViewer } from '../components/DocumentViewer';
+import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
 import { usePlayback, ReaderTheme, ReaderFont } from '../context/PlaybackContext';
+import { useTextFileCreator } from '../hooks/useTextFileCreator';
 import {
   ArrowDown01Icon,
   Bookmark01Icon,
@@ -35,6 +37,7 @@ import {
   Message02Icon,
   Cancel01Icon,
   ArrowUp01Icon,
+  Edit02Icon,
 } from 'hugeicons-react-native';
 
 interface Props {
@@ -89,14 +92,20 @@ function formatTime(s: number) {
 export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-  const { files, addBookmark, removeBookmark, updateProgress, markOpened } = useLibrary();
+  const { files, addBookmark, removeBookmark, updateProgress, markOpened, updateFile } = useLibrary();
   const {
     appearance, updateAppearance,
     autoSkip, updateAutoSkip, playerSettings, updatePlayerSettings,
   } = usePlayback();
+  const { createTextFile } = useTextFileCreator();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(file.progress);
+
+  // Edit mode
+  const [showEdit, setShowEdit] = useState(false);
+  const [editText, setEditText] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   // Live file data from context (avoids stale prop snapshot for bookmarks)
   const liveFile = useMemo(
@@ -461,6 +470,48 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                 <Settings01Icon size={20} color={theme.colors.textPrimary} />
                 <Text style={[styles.actionText, { color: theme.colors.textPrimary }]}>Auto-Skip Settings</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionRow, { backgroundColor: theme.colors.darkerBg }]}
+                onPress={async () => {
+                  setShowMore(false);
+                  setEditLoading(true);
+                  try {
+                    // Load text content for editing
+                    if (file.type === 'TXT' && file.uri) {
+                      const RNFS = require('react-native-fs');
+                      const path = file.uri.replace(/^file:\/\//, '');
+                      const text = await RNFS.readFile(path, 'utf8');
+                      setEditText(text);
+                    } else {
+                      // For PDF/DOCX/EPUB, we need to extract text
+                      // The DocumentViewer already does this, but we'll do it again here
+                      const { extractPdfText, extractDocxText, extractEpubText } = require('../utils/extractText');
+                      const extractors: Record<string, (uri: string) => Promise<string>> = {
+                        PDF: extractPdfText,
+                        DOCX: extractDocxText,
+                        EPUB: extractEpubText,
+                      };
+                      const fn = extractors[file.type];
+                      if (fn && file.uri) {
+                        const text = await fn(file.uri);
+                        setEditText(text);
+                      } else {
+                        setEditText('');
+                      }
+                    }
+                    setShowEdit(true);
+                  } catch (e) {
+                    console.error('Failed to load text for editing:', e);
+                    setEditText('');
+                    setShowEdit(true);
+                  } finally {
+                    setEditLoading(false);
+                  }
+                }}>
+                <Edit02Icon size={20} color={theme.colors.textPrimary} />
+                <Text style={[styles.actionText, { color: theme.colors.textPrimary }]}>
+                  {editLoading ? 'Loading...' : 'Edit'}
+                </Text>
+              </TouchableOpacity>
               {onBringToChat && (
                 <TouchableOpacity style={[styles.actionRow, { backgroundColor: theme.colors.darkerBg }]}
                   onPress={() => { setShowMore(false); onBringToChat(liveFile); }}>
@@ -626,6 +677,29 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           </Animated.View>
         </Pressable>
       </Modal>
+
+      {/* ── Edit Modal ── */}
+      <TextEditModal
+        visible={showEdit}
+        initialTitle={file.name}
+        initialContent={editText || ''}
+        onClose={() => {
+          setShowEdit(false);
+          setEditText(null);
+        }}
+        onSave={async (title, content) => {
+          if (file.uri) {
+            const RNFS = require('react-native-fs');
+            const path = file.uri.replace(/^file:\/\//, '');
+            await RNFS.writeFile(path, content, 'utf8');
+            updateFile(file.id, { name: title });
+          } else {
+            await createTextFile(title, content);
+          }
+          setShowEdit(false);
+          setEditText(null);
+        }}
+      />
     </View>
   );
 }

@@ -13,6 +13,7 @@ interface LibraryContextType {
   /** True while the initial load from storage is in progress. */
   isLoading: boolean;
   addFile: (file: LibraryFile) => void;
+  updateFile: (id: string, updates: Partial<LibraryFile>) => void;
   /** Move a file to the trash. Physical file is kept on disk until emptyTrash. */
   softDeleteFile: (file: LibraryFile) => Promise<void>;
   /** Move a deleted file back into the active library. */
@@ -51,6 +52,14 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const addFile = (file: LibraryFile): void => {
     setFiles((prev) => {
       const updated = [file, ...prev];
+      LibraryRepository.saveAll(updated);
+      return updated;
+    });
+  };
+
+  const updateFile = (id: string, updates: Partial<LibraryFile>): void => {
+    setFiles((prev) => {
+      const updated = prev.map((f) => (f.id === id ? { ...f, ...updates } : f));
       LibraryRepository.saveAll(updated);
       return updated;
     });
@@ -128,6 +137,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
         deletedFiles,
         isLoading,
         addFile,
+        updateFile,
         softDeleteFile,
         restoreFile,
         permanentDeleteFile,

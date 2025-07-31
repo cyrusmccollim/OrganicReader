@@ -120,7 +120,7 @@ export function ProfileScreen({ onBack }: Props) {
             <CrownIcon size={22} color={GOLD} />
             <View style={styles.upgradeText}>
               <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
-              <Text style={styles.upgradeSubtitle}>Enable Chat Assistant & Remove Ads</Text>
+              <Text style={styles.upgradeSubtitle}>Chat Assistant & Remove Ads</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.upgradeBtn}>

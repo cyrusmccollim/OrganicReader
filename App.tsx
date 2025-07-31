@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StatusBar, StyleSheet, View } from 'react-native';
+import { StatusBar, StyleSheet, View, Alert } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
@@ -9,12 +9,17 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import PlaybackScreen from './src/screens/PlaybackScreen';
 import DeletedFilesScreen from './src/screens/DeletedFilesScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import { ScanScreen } from './src/screens/ScanScreen';
 import { NavigationBar } from './src/components/NavigationBar';
+import { TextImportModal } from './src/components/TextImportModal';
+import { LinkImportModal } from './src/components/LinkImportModal';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { LibraryProvider, useLibrary } from './src/context/LibraryContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { PlaybackProvider } from './src/context/PlaybackContext';
 import { useDocumentPicker } from './src/hooks/useDocumentPicker';
+import { useTextFileCreator } from './src/hooks/useTextFileCreator';
+import { useImageOCR } from './src/hooks/useImageOCR';
 import { LibraryFile } from './src/types';
 import { initializeAsyncStorage } from './src/services/AsyncStorageInit';
 
@@ -39,15 +44,22 @@ type Screen =
   | 'userProfile'
   | 'playback'
   | 'deletedFiles'
-  | 'signIn';
+  | 'signIn'
+  | 'scan';
 
 function AppContent() {
   const { theme } = useTheme();
   const { markOpened } = useLibrary();
   const { pickDocument } = useDocumentPicker();
+  const { createTextFile } = useTextFileCreator();
+  const { pickAndRecognize } = useImageOCR();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [playbackFile, setPlaybackFile] = useState<LibraryFile | null>(null);
   const [chatInitialFile, setChatInitialFile] = useState<{ id: string; name: string } | null>(null);
+
+  // Import modal states
+  const [showTextImport, setShowTextImport] = useState(false);
+  const [showLinkImport, setShowLinkImport] = useState(false);
 
   const openFile = (file: LibraryFile) => {
     markOpened(file.id);
@@ -59,16 +71,60 @@ function AppContent() {
     return await pickDocument();
   };
 
+  const handleImportOption = async (id: string) => {
+    switch (id) {
+      case 'text':
+        setShowTextImport(true);
+        break;
+      case 'link':
+        setShowLinkImport(true);
+        break;
+      case 'photos':
+        try {
+          const result = await pickAndRecognize();
+          if (result && result.text) {
+            const file = await createTextFile(
+              `Photo Import ${new Date().toLocaleDateString()}`,
+              result.text,
+            );
+            openFile(file);
+          } else if (result !== null) {
+            Alert.alert('No Text Found', 'Could not detect any text in the selected photo.');
+          }
+        } catch (e) {
+          const message = e instanceof Error ? e.message : 'Failed to import from photos';
+          Alert.alert('Import Error', message);
+        }
+        break;
+      case 'scan':
+        setCurrentScreen('scan');
+        break;
+    }
+  };
+
+  const handleTextSave = async (title: string, content: string) => {
+    const file = await createTextFile(title, content);
+    openFile(file);
+    setShowTextImport(false);
+  };
+
+  const handleLinkSave = async (title: string, content: string) => {
+    const file = await createTextFile(title, content);
+    openFile(file);
+    setShowLinkImport(false);
+  };
+
   const showNavBar =
     currentScreen !== 'playback' &&
     currentScreen !== 'userProfile' &&
     currentScreen !== 'deletedFiles' &&
-    currentScreen !== 'signIn';
+    currentScreen !== 'signIn' &&
+    currentScreen !== 'scan';
 
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
-        return <HomeScreen onOpenFile={openFile} />;
+        return <HomeScreen onOpenFile={openFile} onSelectOption={handleImportOption} />;
       case 'library':
         return <LibraryScreen onOpenFile={openFile} />;
       case 'chat':
@@ -103,6 +159,19 @@ function AppContent() {
             onSignedIn={() => setCurrentScreen('profile')}
           />
         );
+      case 'scan':
+        return (
+          <ScanScreen
+            onClose={() => setCurrentScreen('home')}
+            onTextCaptured={async (text) => {
+              const file = await createTextFile(
+                `Scan ${new Date().toLocaleDateString()}`,
+                text,
+              );
+              openFile(file);
+            }}
+          />
+        );
       case 'add':
       default:
         return <HomeScreen onOpenFile={openFile} />;
@@ -132,8 +201,21 @@ function AppContent() {
             }}
             onOpenFile={openFile}
             onPickFiles={handlePickFiles}
+            onImportOption={handleImportOption}
           />
         )}
+
+        {/* Import Modals */}
+        <TextImportModal
+          visible={showTextImport}
+          onClose={() => setShowTextImport(false)}
+          onSave={handleTextSave}
+        />
+        <LinkImportModal
+          visible={showLinkImport}
+          onClose={() => setShowLinkImport(false)}
+          onSave={handleLinkSave}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );

@@ -17,6 +17,7 @@ interface NavigationBarProps {
   onNavigate: (screen: 'home' | 'add' | 'library' | 'profile' | 'chat') => void;
   onOpenFile?: (file: LibraryFile) => void;
   onPickFiles?: () => Promise<LibraryFile | null>;
+  onImportOption?: (id: string) => void;
 }
 
 function NavItem({
@@ -44,7 +45,7 @@ function NavItem({
   );
 }
 
-export function NavigationBar({ currentScreen, onNavigate, onOpenFile, onPickFiles }: NavigationBarProps) {
+export function NavigationBar({ currentScreen, onNavigate, onOpenFile, onPickFiles, onImportOption }: NavigationBarProps) {
   const { theme } = useTheme();
   const barStyles = useMemo(() => makeStyles(theme), [theme]);
   const [showCreate, setShowCreate] = useState(false);
@@ -55,6 +56,10 @@ export function NavigationBar({ currentScreen, onNavigate, onOpenFile, onPickFil
     if (file && onOpenFile) {
       onOpenFile(file);
     }
+  };
+
+  const handleImportOption = (id: string) => {
+    onImportOption?.(id);
   };
 
   return (
@@ -119,6 +124,7 @@ export function NavigationBar({ currentScreen, onNavigate, onOpenFile, onPickFil
         visible={showCreate}
         onClose={() => setShowCreate(false)}
         onPickFiles={handlePickFiles}
+        onSelectOption={handleImportOption}
       />
     </>
   );
