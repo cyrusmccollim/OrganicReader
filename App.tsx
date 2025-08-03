@@ -12,6 +12,7 @@ import SignInScreen from './src/screens/SignInScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { NavigationBar } from './src/components/NavigationBar';
 import { TextImportModal } from './src/components/TextImportModal';
+import { TextEditModal } from './src/components/TextEditModal';
 import { LinkImportModal } from './src/components/LinkImportModal';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { LibraryProvider, useLibrary } from './src/context/LibraryContext';
@@ -61,6 +62,12 @@ function AppContent() {
   const [showTextImport, setShowTextImport] = useState(false);
   const [showLinkImport, setShowLinkImport] = useState(false);
 
+  // Scan/Photo edit modal state
+  const [showOcrEdit, setShowOcrEdit] = useState(false);
+  const [ocrEditTitle, setOcrEditTitle] = useState('');
+  const [ocrEditContent, setOcrEditContent] = useState('');
+  const [ocrImportCount, setOcrImportCount] = useState(0);
+
   const openFile = (file: LibraryFile) => {
     markOpened(file.id);
     setPlaybackFile(file);
@@ -83,11 +90,10 @@ function AppContent() {
         try {
           const result = await pickAndRecognize();
           if (result && result.text) {
-            const file = await createTextFile(
-              `Photo Import ${new Date().toLocaleDateString()}`,
-              result.text,
-            );
-            openFile(file);
+            // Show edit modal before adding to library
+            setOcrEditContent(result.text);
+            setOcrEditTitle(`Photo Import ${ocrImportCount + 1}`);
+            setShowOcrEdit(true);
           } else if (result !== null) {
             Alert.alert('No Text Found', 'Could not detect any text in the selected photo.');
           }
@@ -112,6 +118,15 @@ function AppContent() {
     const file = await createTextFile(title, content);
     openFile(file);
     setShowLinkImport(false);
+  };
+
+  const handleOcrEditSave = async (title: string, content: string) => {
+    const file = await createTextFile(title, content);
+    setOcrImportCount(c => c + 1);
+    setShowOcrEdit(false);
+    setOcrEditContent('');
+    setOcrEditTitle('');
+    openFile(file);
   };
 
   const showNavBar =
@@ -164,11 +179,10 @@ function AppContent() {
           <ScanScreen
             onClose={() => setCurrentScreen('home')}
             onTextCaptured={async (text) => {
-              const file = await createTextFile(
-                `Scan ${new Date().toLocaleDateString()}`,
-                text,
-              );
-              openFile(file);
+              // Show edit modal before adding to library
+              setOcrEditContent(text);
+              setOcrEditTitle(`Scan ${ocrImportCount + 1}`);
+              setShowOcrEdit(true);
             }}
           />
         );
@@ -215,6 +229,17 @@ function AppContent() {
           visible={showLinkImport}
           onClose={() => setShowLinkImport(false)}
           onSave={handleLinkSave}
+        />
+        <TextEditModal
+          visible={showOcrEdit}
+          initialTitle={ocrEditTitle}
+          initialContent={ocrEditContent}
+          onClose={() => {
+            setShowOcrEdit(false);
+            setOcrEditContent('');
+            setOcrEditTitle('');
+          }}
+          onSave={handleOcrEditSave}
         />
       </SafeAreaView>
     </SafeAreaProvider>
