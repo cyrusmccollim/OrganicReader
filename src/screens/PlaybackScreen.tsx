@@ -58,7 +58,7 @@ const THEMES: { id: ReaderTheme; label: string; color: string; text: string }[] 
   { id: 'light',   label: 'Light',   color: '#ffffff', text: '#1a1a1a' },
   { id: 'dark',    label: 'Dark',    color: '#121212', text: '#e0e0e0' },
   { id: 'sepia',   label: 'Sepia',   color: '#f4ecd8', text: '#5b4636' },
-  { id: 'organic', label: 'Organic', color: '#0d1a12', text: '#d1e8d5' },
+  { id: 'organic', label: 'Organic', color: '#0a1410', text: '#c8e6d0' },
 ];
 
 const FONT_S_MIN = 12;
