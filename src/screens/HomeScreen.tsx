@@ -154,10 +154,7 @@ export function HomeScreen({ onOpenFile, onSelectOption, onNavigateToProfile }: 
               <Text style={styles.continueEmoji}>{continueReading.thumbnail}</Text>
             </View>
             <View style={styles.continueInfo}>
-              <View style={styles.continueTitleRow}>
-                <Text style={styles.continueTitle} numberOfLines={1}>{continueReading.name}</Text>
-                <Text style={styles.lastReadTime}>{formatLastOpened(continueReading.lastOpenedAt)}</Text>
-              </View>
+              <Text style={styles.continueTitle} numberOfLines={1}>{continueReading.name}</Text>
               <Text style={styles.continueAuthor}>
                 {continueReading.type}
                 {continueReading.bookmarks?.length > 0 && ` · ${continueReading.bookmarks.slice(-1)[0].label}`}
@@ -173,9 +170,12 @@ export function HomeScreen({ onOpenFile, onSelectOption, onNavigateToProfile }: 
                   ]}
                 />
               </View>
-              <Text style={styles.continueProgress}>
-                {Math.round(continueReading.progress * 100)}% complete
-              </Text>
+              <View style={styles.progressRow}>
+                <Text style={styles.continueProgress}>
+                  {Math.round(continueReading.progress * 100)}% complete
+                </Text>
+                <Text style={styles.lastReadTime}>{formatLastOpened(continueReading.lastOpenedAt)}</Text>
+              </View>
             </View>
             <View style={[styles.continueBtn, { backgroundColor: theme.colors.primary }]}>
               <Text style={[styles.continueBtnText, { color: theme.colors.darkBg }]}>Read</Text>
@@ -294,9 +294,7 @@ function makeStyles(theme: Theme) {
     },
     continueEmoji: { fontSize: 28 },
     continueInfo: { flex: 1, gap: 3 },
-    continueTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    continueTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, flex: 1, marginRight: 8 },
-    lastReadTime: { fontSize: 10, color: colors.textSecondary, fontWeight: '600' },
+    continueTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
     continueAuthor: { fontSize: 12, color: colors.textSecondary },
     progressBarTrack: {
       height: 4,
@@ -306,7 +304,9 @@ function makeStyles(theme: Theme) {
       overflow: 'hidden',
     },
     progressBarFill: { height: 4, borderRadius: 2 },
+    progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     continueProgress: { fontSize: 11, color: colors.textSecondary },
+    lastReadTime: { fontSize: 10, color: colors.textSecondary, fontWeight: '600' },
     continueBtn: {
       borderRadius: borderRadius.sm,
       paddingVertical: 8,
