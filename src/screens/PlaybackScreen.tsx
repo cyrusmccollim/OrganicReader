@@ -379,7 +379,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
       <View style={styles.docContainer}>
         <DocumentViewer
           ref={documentRef}
-          file={file}
+          file={liveFile}
           refreshKey={viewerRefreshKey}
           onSearchResult={handleSearchResult}
           onViewerMessage={handleViewerMessage}

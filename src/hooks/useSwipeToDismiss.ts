@@ -27,7 +27,7 @@ export function useSwipeToDismiss(onDismiss: () => void) {
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true, // Claim touches on the sheet
+      onStartShouldSetPanResponder: () => false, // Let inner scroll views claim touch start
       onMoveShouldSetPanResponder: (_, gs) => {
         // Only claim if dragging vertically (prioritize downward for dismiss)
         return Math.abs(gs.dy) > Math.abs(gs.dx) && Math.abs(gs.dy) > 3;

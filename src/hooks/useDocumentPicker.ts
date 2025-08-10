@@ -36,16 +36,12 @@ function thumbnailForType(type: LibraryFile['type']): string {
   }
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
 export function useDocumentPicker() {
-  const { addFile } = useLibrary();
+  const { addFile, files } = useLibrary();
 
   const pickDocument = async (): Promise<LibraryFile | null> => {
     try {
@@ -72,7 +68,7 @@ export function useDocumentPicker() {
         name:      result.name?.replace(/\.[^.]+$/, '') ?? 'Untitled',
         type:      fileType,
         thumbnail: thumbnailForType(fileType),
-        dateAdded: formatDate(new Date()),
+        dateAdded: `#${files.length + 1}`,
         progress:  0,
         bookmarks: [],
         uri:       permanentUri,
