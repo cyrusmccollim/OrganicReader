@@ -1,10 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 export type ViewMode = 'original' | 'text';
 
 export type ReaderTheme = 'light' | 'dark' | 'sepia' | 'organic';
 export type ReaderFont = 'System' | 'Serif' | 'Sans' | 'Mono' | 'Modern' | 'Classic';
+
+export const FONT_FAMILIES: Record<ReaderFont, string | undefined> = {
+  System:  undefined,
+  Serif:   Platform.OS === 'ios' ? 'Georgia'            : 'serif',
+  Sans:    Platform.OS === 'ios' ? 'AvenirNext-Regular' : 'sans-serif',
+  Mono:    Platform.OS === 'ios' ? 'Menlo'              : 'monospace',
+  Modern:  Platform.OS === 'ios' ? 'Futura-Medium'      : 'sans-serif-condensed',
+  Classic: Platform.OS === 'ios' ? 'Palatino-Roman'     : 'serif',
+};
 
 export interface AppearanceSettings {
   fontSize: number;
