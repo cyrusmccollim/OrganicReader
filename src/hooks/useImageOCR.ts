@@ -4,7 +4,6 @@ import MlKitTextRecognition from '@react-native-ml-kit/text-recognition';
 
 export interface OCRResult {
   text: string;
-  confidence: number;
 }
 
 export function useImageOCR() {
@@ -14,26 +13,9 @@ export function useImageOCR() {
   const [error, setError] = useState<string | null>(null);
 
   const performOCR = async (imageUri: string): Promise<OCRResult> => {
-    // ML Kit text recognition
     const result = await MlKitTextRecognition.recognize(imageUri);
-
-    // Extract all text from blocks
-    let fullText = '';
-    let totalConfidence = 0;
-    let blockCount = 0;
-
-    for (const block of result.blocks) {
-      fullText += block.text + '\n';
-      // ML Kit doesn't provide confidence for all platforms
-      blockCount++;
-    }
-
-    const avgConfidence = blockCount > 0 ? totalConfidence / blockCount : 1;
-
-    return {
-      text: fullText.trim(),
-      confidence: avgConfidence,
-    };
+    const text = result.blocks.map(b => b.text).join('\n').trim();
+    return { text };
   };
 
   const pickAndRecognize = async (): Promise<OCRResult | null> => {

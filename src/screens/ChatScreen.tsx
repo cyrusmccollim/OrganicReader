@@ -73,15 +73,17 @@ export function ChatScreen({ initialAttachment }: Props) {
     const text = input.trim();
     if (!text && attachedFiles.length === 0) return;
 
+    const msgId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: msgId(),
       role: 'user',
       text: text || (attachedFiles.length > 0 ? `Attached ${attachedFiles.length} file(s)` : ''),
       attachments: attachedFiles.map((f) => f.name),
     };
 
     const aiMsg: Message = {
-      id: (Date.now() + 1).toString(),
+      id: msgId(),
       role: 'assistant',
       text: MOCK_RESPONSES[aiResponseIndex.current % MOCK_RESPONSES.length],
     };

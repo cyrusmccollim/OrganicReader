@@ -101,28 +101,21 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateAppearance = (settings: Partial<AppearanceSettings>) => {
-    setAppearance((prev) => {
-      const next = { ...prev, ...settings };
-      // Persist after state update - do NOT call setItem inside updater (React may call updater multiple times)
-      Promise.resolve().then(() => AsyncStorage.setItem(STORAGE_KEYS.APPEARANCE, JSON.stringify(next)));
-      return next;
-    });
+    const next = { ...appearance, ...settings };
+    setAppearance(next);
+    AsyncStorage.setItem(STORAGE_KEYS.APPEARANCE, JSON.stringify(next));
   };
 
   const updateAutoSkip = (settings: Partial<AutoSkipSettings>) => {
-    setAutoSkip((prev) => {
-      const next = { ...prev, ...settings };
-      Promise.resolve().then(() => AsyncStorage.setItem(STORAGE_KEYS.AUTO_SKIP, JSON.stringify(next)));
-      return next;
-    });
+    const next = { ...autoSkip, ...settings };
+    setAutoSkip(next);
+    AsyncStorage.setItem(STORAGE_KEYS.AUTO_SKIP, JSON.stringify(next));
   };
 
   const updatePlayerSettings = (settings: Partial<PlayerSettings>) => {
-    setPlayerSettings((prev) => {
-      const next = { ...prev, ...settings };
-      Promise.resolve().then(() => AsyncStorage.setItem(STORAGE_KEYS.PLAYER, JSON.stringify(next)));
-      return next;
-    });
+    const next = { ...playerSettings, ...settings };
+    setPlayerSettings(next);
+    AsyncStorage.setItem(STORAGE_KEYS.PLAYER, JSON.stringify(next));
   };
 
   return (

@@ -14,6 +14,7 @@ import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useTheme } from '../ThemeContext';
 import { ACCENT_COLORS, Theme } from '../theme';
 import { useAuth } from '../context/AuthContext';
+import { getUserInitials } from '../utils/readingStats';
 import {
   ArrowRight01Icon,
   Clock01Icon,
@@ -48,9 +49,7 @@ export function SettingsScreen({ onShowProfile, onShowDeletedFiles, onShowSignIn
   const [showGoalPicker, setShowGoalPicker] = useState(false);
   const { translateY: goalTY, panResponder: goalPR } = useSwipeToDismiss(() => setShowGoalPicker(false));
 
-  const initials = user?.name
-    ? user.name.split(' ').map((p) => p[0]).join('').toUpperCase().slice(0, 2)
-    : '';
+  const initials = getUserInitials(user?.name);
 
   return (
     <>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar, StyleSheet, View, Alert } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -15,7 +15,7 @@ import { TextImportModal } from './src/components/TextImportModal';
 import { TextEditModal } from './src/components/TextEditModal';
 import { LinkImportModal } from './src/components/LinkImportModal';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
-import { LibraryProvider, useLibrary } from './src/context/LibraryContext';
+import { LibraryProvider } from './src/context/LibraryContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { PlaybackProvider } from './src/context/PlaybackContext';
 import { useDocumentPicker } from './src/hooks/useDocumentPicker';
@@ -50,7 +50,6 @@ type Screen =
 
 function AppContent() {
   const { theme } = useTheme();
-  const { markOpened } = useLibrary();
   const { pickDocument } = useDocumentPicker();
   const { createTextFile } = useTextFileCreator();
   const { pickAndRecognize } = useImageOCR();
@@ -66,10 +65,9 @@ function AppContent() {
   const [showOcrEdit, setShowOcrEdit] = useState(false);
   const [ocrEditTitle, setOcrEditTitle] = useState('');
   const [ocrEditContent, setOcrEditContent] = useState('');
-  const [ocrImportCount, setOcrImportCount] = useState(0);
+  const ocrImportCount = useRef(0);
 
   const openFile = (file: LibraryFile) => {
-    markOpened(file.id);
     setPlaybackFile(file);
     setCurrentScreen('playback');
   };
@@ -92,7 +90,7 @@ function AppContent() {
           if (result && result.text) {
             // Show edit modal before adding to library
             setOcrEditContent(result.text);
-            setOcrEditTitle(`Photo Import ${ocrImportCount + 1}`);
+            setOcrEditTitle(`Photo Import ${ocrImportCount.current + 1}`);
             setShowOcrEdit(true);
           } else if (result !== null) {
             Alert.alert('No Text Found', 'Could not detect any text in the selected photo.');
@@ -122,7 +120,7 @@ function AppContent() {
 
   const handleOcrEditSave = async (title: string, content: string) => {
     const file = await createTextFile(title, content);
-    setOcrImportCount(c => c + 1);
+    ocrImportCount.current += 1;
     setShowOcrEdit(false);
     setOcrEditContent('');
     setOcrEditTitle('');
@@ -181,7 +179,7 @@ function AppContent() {
             onTextCaptured={async (text) => {
               // Show edit modal before adding to library
               setOcrEditContent(text);
-              setOcrEditTitle(`Scan ${ocrImportCount + 1}`);
+              setOcrEditTitle(`Scan ${ocrImportCount.current + 1}`);
               setShowOcrEdit(true);
             }}
           />

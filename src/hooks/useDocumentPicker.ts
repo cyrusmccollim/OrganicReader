@@ -64,7 +64,7 @@ export function useDocumentPicker() {
 
       const fileType = resolveType(result.name ?? '', result.type ?? '');
       const file: LibraryFile = {
-        id: Date.now().toString(),
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
         name:      result.name?.replace(/\.[^.]+$/, '') ?? 'Untitled',
         type:      fileType,
         thumbnail: thumbnailForType(fileType),
