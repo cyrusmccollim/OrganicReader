@@ -18,6 +18,7 @@ import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { LibraryProvider } from './src/context/LibraryContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { PlaybackProvider } from './src/context/PlaybackContext';
+import { TTSProvider } from './src/context/TTSContext';
 import { useDocumentPicker } from './src/hooks/useDocumentPicker';
 import { useTextFileCreator } from './src/hooks/useTextFileCreator';
 import { useImageOCR } from './src/hooks/useImageOCR';
@@ -256,7 +257,9 @@ export function App() {
       <LibraryProvider>
         <AuthProvider>
           <PlaybackProvider>
-            <AppContent />
+            <TTSProvider>
+              <AppContent />
+            </TTSProvider>
           </PlaybackProvider>
         </AuthProvider>
       </LibraryProvider>

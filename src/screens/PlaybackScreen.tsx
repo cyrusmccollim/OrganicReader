@@ -11,6 +11,7 @@ import {
   PanResponder,
   Animated,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import { useTheme } from '../ThemeContext';
@@ -20,7 +21,8 @@ import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { DocumentViewer } from '../components/DocumentViewer';
 import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
-import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES } from '../context/PlaybackContext';
+import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES, SPEED_OPTIONS } from '../context/PlaybackContext';
+import { useTTS } from '../context/TTSContext';
 import { useTextFileCreator } from '../hooks/useTextFileCreator';
 import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
 import {
@@ -48,13 +50,6 @@ interface Props {
   onBringToChat?: (file: LibraryFile) => void;
 }
 
-const VOICES = [
-  { id: 'sarah',  label: 'Sarah',  subtitle: 'Natural · English (US)' },
-  { id: 'james',  label: 'James',  subtitle: 'Natural · English (US)' },
-  { id: 'emma',   label: 'Emma',   subtitle: 'Classic · English (UK)' },
-  { id: 'marcus', label: 'Marcus', subtitle: 'Classic · English (US)' },
-];
-
 const FONTS: ReaderFont[] = ['System', 'Serif', 'Sans', 'Mono', 'Modern', 'Classic'];
 const THEMES: { id: ReaderTheme; label: string; color: string; text: string }[] = [
   { id: 'light',   label: 'Light',   color: '#ffffff', text: '#1a1a1a' },
@@ -65,7 +60,6 @@ const THEMES: { id: ReaderTheme; label: string; color: string; text: string }[] 
 
 const FONT_S_MIN = 12;
 const FONT_S_MAX = 36;
-const TOTAL_SECONDS = 9368;
 
 function ArtifactToggle({
   label, value, onValueChange, primaryColor, borderColor, textColor, rowStyle, labelStyle,
@@ -82,14 +76,19 @@ function ArtifactToggle({
   );
 }
 
-function formatTime(s: number) {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
+function formatTime(ms: number) {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const sec = totalSec % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+function totalDurationMs(sentenceTimings: { endMs: number }[]): number {
+  if (sentenceTimings.length === 0) return 0;
+  return sentenceTimings[sentenceTimings.length - 1].endMs;
+}
 
 export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const { theme } = useTheme();
@@ -99,9 +98,14 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     appearance, updateAppearance,
     autoSkip, updateAutoSkip, playerSettings, updatePlayerSettings,
   } = usePlayback();
+  const {
+    ttsState, downloadProgress, downloadLanguage,
+    sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
+    progressFraction, downloadedModels,
+    initTTS, play, pause, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setLanguage,
+  } = useTTS();
   const { createTextFile } = useTextFileCreator();
 
-  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(file.progress);
 
   // Edit mode
@@ -110,20 +114,17 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const [editLoading, setEditLoading] = useState(false);
   const [viewerRefreshKey, setViewerRefreshKey] = useState(0);
 
-  // Live file data from context (avoids stale prop snapshot for bookmarks)
   const liveFile = useMemo(
     () => files.find(f => f.id === file.id) ?? file,
     [files, file]
   );
   const bookmarks: Bookmark[] = liveFile.bookmarks ?? [];
 
-  // Document position tracking (reported from WebView)
   const [docPage, setDocPage] = useState(1);
   const [docTotalPages, setDocTotalPages] = useState<number | null>(null);
   const [docParagraph, setDocParagraph] = useState(1);
   const [docTotalParagraphs, setDocTotalParagraphs] = useState<number | null>(null);
 
-  // Inline search
   const documentRef = useRef<ViewerHandle>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,7 +133,16 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
 
   const trackLayoutRef = useRef({ x: 0, width: 0 });
 
-  // Separate scrub PanResponder that uses absolute position
+  const isPlaying = ttsState === 'playing';
+  const isLoading = ttsState === 'loading' || ttsState === 'initializing';
+  const isDownloading = ttsState === 'downloading';
+
+  // Sync reading progress with TTS position
+  useEffect(() => {
+    setProgress(progressFraction > 0 ? progressFraction : file.progress);
+  }, [progressFraction, file.progress]);
+
+  // Scrub bar drag handler
   const scrubAwarePR = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -163,13 +173,13 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           const p = Math.max(0, Math.min(1, (pageX - x0) / w));
           setProgress(p);
           updateProgress(file.id, p);
+          seekToFraction(p);
         }
       },
     })
   ).current;
 
   useEffect(() => { markOpened(file.id); }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setProgress(file.progress); }, [file.progress]);
 
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [showAppearance, setShowAppearance] = useState(false);
@@ -186,9 +196,9 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const voiceDismiss      = useSwipeToDismiss(() => setShowVoicePicker(false));
   const appearanceDismiss = useSwipeToDismiss(() => setShowAppearance(false));
 
-  const currentSeconds = Math.round(progress * TOTAL_SECONDS);
+  const totalMs = totalDurationMs(sentenceTimings);
+  const currentMs = progressFraction * totalMs;
 
-  // Page indicator - real data from viewer
   const pageLabel = useMemo(() => {
     if (file.type === 'DOCX') {
       if (docTotalParagraphs !== null) return `Paragraph ${docParagraph} of ${docTotalParagraphs}`;
@@ -202,7 +212,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     return null;
   }, [file.type, docPage, docTotalPages, docParagraph, docTotalParagraphs]);
 
-  // Bookmark current position - called from toolbar button directly
   const handleBookmarkPress = useCallback(() => {
     let label: string;
     if (file.type === 'DOCX' && docTotalParagraphs !== null) {
@@ -223,12 +232,8 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const jumpToBookmark = (b: Bookmark) => {
     setProgress(b.progress);
     updateProgress(file.id, b.progress);
+    seekToFraction(b.progress);
     setShowBookmarks(false);
-  };
-
-  const updateProgressThrottled = (newVal: number) => {
-    setProgress(newVal);
-    updateProgress(file.id, newVal);
   };
 
   const handleSearchChange = useCallback((q: string) => {
@@ -260,7 +265,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     setSearchResults({ count, current });
   }, []);
 
-  // Handle messages from all viewer WebViews (page numbers, paragraph counts)
   const handleViewerMessage = useCallback((msg: Record<string, any>) => {
     if (msg.type === 'ready') {
       if (msg.pages) { setDocTotalPages(msg.pages); setDocPage(1); }
@@ -275,6 +279,26 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     }
   }, []);
 
+  const handleTextExtracted = useCallback((text: string) => {
+    initTTS(text);
+  }, [initTTS]);
+
+  const handlePlayPause = useCallback(async () => {
+    if (isPlaying) {
+      await pause();
+    } else {
+      await play();
+    }
+  }, [isPlaying, play, pause]);
+
+  const handleSpeedCycle = useCallback(async () => {
+    const currentIdx = SPEED_OPTIONS.indexOf(playerSettings.playbackSpeed);
+    const nextIdx = (currentIdx + 1) % SPEED_OPTIONS.length;
+    const nextSpeed = SPEED_OPTIONS[nextIdx];
+    updatePlayerSettings({ playbackSpeed: nextSpeed });
+    await setSpeed(nextSpeed);
+  }, [playerSettings.playbackSpeed, updatePlayerSettings, setSpeed]);
+
   const toggleProps = {
     primaryColor: theme.colors.primary,
     borderColor: theme.colors.border,
@@ -282,6 +306,8 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     rowStyle: styles.toggleRow,
     labelStyle: styles.toggleLabel,
   };
+
+  const ttsActive = ttsState !== 'idle' && sentences.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.darkBg }]}>
@@ -363,15 +389,37 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           refreshKey={viewerRefreshKey}
           onSearchResult={handleSearchResult}
           onViewerMessage={handleViewerMessage}
+          onTextExtracted={handleTextExtracted}
+          ttsMode={ttsActive && !searchVisible}
+          ttsSentences={sentences}
+          ttsActiveSentenceIndex={activeSentenceIndex}
+          ttsActiveWordIndex={activeWordIndex}
+          onSentenceTap={seekToSentence}
         />
       </View>
+
+      {/* ── Download Overlay ── */}
+      {isDownloading && (
+        <View style={[styles.downloadOverlay, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.downloadText, { color: '#fff' }]}>
+            Downloading {downloadLanguage?.toUpperCase()} voice model…
+          </Text>
+          <View style={[styles.downloadBar, { backgroundColor: theme.colors.border }]}>
+            <View style={[styles.downloadFill, { width: `${downloadProgress * 100}%` as any, backgroundColor: theme.colors.primary }]} />
+          </View>
+          <Text style={[styles.downloadPct, { color: theme.colors.textSecondary }]}>
+            {Math.round(downloadProgress * 100)}%
+          </Text>
+        </View>
+      )}
 
       {/* ── TTS Panel ── */}
       {!playerSettings.autoHidePlayer && (
         <View style={[styles.ttsPanel, { backgroundColor: theme.colors.darkBg, borderTopColor: theme.colors.border }]}>
           {/* Scrubbable progress bar */}
           <View style={styles.progressRow}>
-            <Text style={styles.timeText}>{formatTime(currentSeconds)}</Text>
+            <Text style={styles.timeText}>{formatTime(currentMs)}</Text>
             <View
               style={styles.progressTrackWrap}
               onLayout={(e) => {
@@ -383,10 +431,9 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}>
                 <View style={[styles.progressFill, { width: `${progress * 100}%` as any, backgroundColor: theme.colors.primary }]} />
               </View>
-              {/* Thumb knob */}
               <View style={[styles.progressThumb, { left: `${progress * 100}%` as any, backgroundColor: theme.colors.primary }]} />
             </View>
-            <Text style={styles.timeText}>{formatTime(TOTAL_SECONDS)}</Text>
+            <Text style={styles.timeText}>{formatTime(totalMs)}</Text>
           </View>
 
           {pageLabel && (
@@ -400,25 +447,30 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               </View>
             </TouchableOpacity>
             <TouchableOpacity style={styles.skipBtn}
-              onPress={() => updateProgressThrottled(Math.max(0, progress - 10 / TOTAL_SECONDS))}
+              onPress={() => jumpSeconds(-10)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <GoBackward10SecIcon size={36} color={theme.colors.textPrimary} />
             </TouchableOpacity>
             <TouchableOpacity style={[styles.playBtn, { backgroundColor: theme.colors.primary }]}
-              onPress={() => setIsPlaying(p => !p)} activeOpacity={0.85}>
-              {isPlaying
+              onPress={handlePlayPause} activeOpacity={0.85}>
+              {isLoading
+                ? <ActivityIndicator size="small" color={theme.colors.darkBg} />
+                : isPlaying
                 ? <PauseIcon size={28} color={theme.colors.darkBg} />
                 : <PlayIcon size={28} color={theme.colors.darkBg} />}
             </TouchableOpacity>
             <TouchableOpacity style={styles.skipBtn}
-              onPress={() => updateProgressThrottled(Math.min(1, progress + 10 / TOTAL_SECONDS))}
+              onPress={() => jumpSeconds(10)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <GoForward10SecIcon size={36} color={theme.colors.textPrimary} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.speedBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={handleSpeedCycle}
               activeOpacity={0.8}>
-              <Text style={[styles.speedText, { color: theme.colors.textPrimary }]}>{playerSettings.playbackSpeed}</Text>
+              <Text style={[styles.speedText, { color: theme.colors.textPrimary }]}>
+                {playerSettings.playbackSpeed}x
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -456,7 +508,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                   setShowMore(false);
                   setEditLoading(true);
                   try {
-                    // Load text content for editing
                     if (file.type === 'TXT' && file.uri) {
                       const path = file.uri.replace(/^file:\/\//, '');
                       const text = await RNFS.readFile(path, 'utf8');
@@ -582,20 +633,29 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
             <View style={styles.handleWrap}>
               <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
             </View>
-            <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Select AI Voice</Text>
-            {VOICES.map(v => (
-              <TouchableOpacity key={v.id}
-                style={[styles.voiceOption, { backgroundColor: theme.colors.darkerBg }]}
-                onPress={() => setShowVoicePicker(false)}>
-                <View style={[styles.voiceAvatar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <VoiceIcon size={20} color={theme.colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{v.label}</Text>
-                  <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>{v.subtitle}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+            <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Select Language / Voice</Text>
+            {downloadedModels.length === 0 ? (
+              <View style={styles.emptyState}>
+                <VoiceIcon size={40} color={theme.colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                  No voices downloaded yet.{'\n'}Open a document to auto-download.
+                </Text>
+              </View>
+            ) : (
+              downloadedModels.map(m => (
+                <TouchableOpacity key={m.langCode}
+                  style={[styles.voiceOption, { backgroundColor: theme.colors.darkerBg }]}
+                  onPress={() => { setLanguage(m.langCode); setShowVoicePicker(false); }}>
+                  <View style={[styles.voiceAvatar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                    <VoiceIcon size={20} color={theme.colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{m.label}</Text>
+                    <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>{m.langCode.toUpperCase()} · Piper VITS</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </Animated.View>
         </Pressable>
       </Modal>
@@ -674,7 +734,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           }
           setShowEdit(false);
           setEditText(null);
-          setViewerRefreshKey(k => k + 1); // Refresh the viewer
+          setViewerRefreshKey(k => k + 1);
         }}
       />
     </View>
@@ -709,6 +769,16 @@ function makeStyles(theme: Theme) {
 
     docContainer: { flex: 1 },
 
+    downloadOverlay: {
+      position: 'absolute', left: 0, right: 0, bottom: 0, top: 0,
+      justifyContent: 'center', alignItems: 'center', gap: 16,
+      zIndex: 100,
+    },
+    downloadText: { fontSize: 15, fontWeight: '600' },
+    downloadBar: { width: 240, height: 6, borderRadius: 3, overflow: 'hidden' },
+    downloadFill: { height: 6, borderRadius: 3 },
+    downloadPct: { fontSize: 13, fontWeight: '700' },
+
     ttsPanel: {
       paddingTop: 10, paddingBottom: 32, paddingHorizontal: spacing.lg,
       borderTopWidth: StyleSheet.hairlineWidth, gap: 4,
@@ -741,10 +811,7 @@ function makeStyles(theme: Theme) {
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
     sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingTop: 0, paddingBottom: 40 },
     tallSheet: { maxHeight: '75%' },
-    handleWrap: {
-      paddingTop: 14, paddingBottom: 8,
-      alignItems: 'center',
-    },
+    handleWrap: { paddingTop: 14, paddingBottom: 8, alignItems: 'center' },
     handle: { width: 40, height: 4, borderRadius: 2 },
     sheetTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 20 },
     sectionLabel: {
@@ -771,7 +838,7 @@ function makeStyles(theme: Theme) {
     bookmarkLabel: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
     bookmarkDate: { fontSize: 11 },
     emptyState: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-    emptyText: { fontSize: 14, fontWeight: '600' },
+    emptyText: { fontSize: 14, fontWeight: '600', textAlign: 'center', lineHeight: 22 },
 
     themeGrid: { flexDirection: 'row', gap: 10, marginBottom: 24 },
     themeItem: {
