@@ -16,7 +16,7 @@ export class TTSBuffer {
   private onError: (err: Error) => void;
 
   private cancelled = false;
-  private generating = false;
+  private running = false;
   private nextGenIndex = 0;
   private cumulativeMs = 0;
   private generatedPaths: string[] = [];
@@ -37,60 +37,56 @@ export class TTSBuffer {
     this.cancelled = false;
     this.nextGenIndex = fromIndex;
     this.cumulativeMs = fromMs;
-    this.generateNext();
+    this.runLoop();
   }
 
-  // Call when RNTP has consumed a segment to trigger lookahead generation
   onSegmentConsumed() {
-    if (!this.cancelled) this.generateNext();
+    if (!this.cancelled && !this.running) this.runLoop();
   }
 
-  private async generateNext() {
-    if (this.generating || this.cancelled) return;
-    if (this.nextGenIndex >= this.sentences.length) return;
+  private async runLoop() {
+    if (this.running || this.cancelled) return;
+    this.running = true;
 
-    this.generating = true;
-    const sentence = this.sentences[this.nextGenIndex];
-    const startMs = this.cumulativeMs;
+    while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
+      const sentence = this.sentences[this.nextGenIndex];
+      const startMs = this.cumulativeMs;
 
-    try {
-      const segment = await synthesize(sentence.text, this.sampleRate);
-      if (this.cancelled) {
-        await deleteTempFile(segment.audioPath);
-        this.generating = false;
-        return;
+      try {
+        const segment = await synthesize(sentence.text, this.sampleRate);
+        if (this.cancelled) {
+          await deleteTempFile(segment.audioPath);
+          break;
+        }
+
+        this.generatedPaths.push(segment.audioPath);
+        const timing = buildSentenceTiming(sentence, startMs, segment.durationMs);
+        this.cumulativeMs += segment.durationMs;
+        this.nextGenIndex++;
+
+        await TrackPlayer.add({
+          id: `seg_${sentence.index}`,
+          url: `file://${segment.audioPath}`,
+          title: `Sentence ${sentence.index}`,
+          artist: 'TTS',
+          duration: segment.durationMs / 1000,
+        });
+
+        this.onSegmentReady({ sentenceIndex: sentence.index, timing, audioPath: segment.audioPath });
+      } catch (err) {
+        if (!this.cancelled) {
+          this.onError(err instanceof Error ? err : new Error(String(err)));
+        }
+        break;
       }
-
-      this.generatedPaths.push(segment.audioPath);
-      const timing = buildSentenceTiming(sentence, startMs, segment.durationMs);
-      this.cumulativeMs += segment.durationMs;
-      this.nextGenIndex++;
-
-      // Add to RNTP queue
-      await TrackPlayer.add({
-        id: `seg_${sentence.index}`,
-        url: `file://${segment.audioPath}`,
-        title: `Sentence ${sentence.index}`,
-        artist: 'TTS',
-        duration: segment.durationMs / 1000,
-      });
-
-      this.onSegmentReady({ sentenceIndex: sentence.index, timing, audioPath: segment.audioPath });
-    } catch (err) {
-      if (!this.cancelled) {
-        this.onError(err instanceof Error ? err : new Error(String(err)));
-      }
-    } finally {
-      this.generating = false;
     }
 
-    // Continue generating up to LOOKAHEAD sentences ahead of current
-    if (!this.cancelled) this.generateNext();
+    this.running = false;
   }
 
   flush() {
     this.cancelled = true;
-    // Delete all generated temp files
+    this.running = false;
     const paths = [...this.generatedPaths];
     this.generatedPaths = [];
     this.nextGenIndex = 0;
@@ -100,9 +96,5 @@ export class TTSBuffer {
 
   destroy() {
     this.flush();
-  }
-
-  isExhausted(): boolean {
-    return this.nextGenIndex >= this.sentences.length;
   }
 }
