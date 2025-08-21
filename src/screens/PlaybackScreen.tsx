@@ -102,7 +102,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     ttsState, downloadProgress, downloadLanguage,
     sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
     progressFraction, downloadedModels,
-    initTTS, play, pause, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setLanguage,
+    initTTS, play, pause, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice,
   } = useTTS();
   const { createTextFile } = useTextFileCreator();
 
@@ -643,15 +643,15 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               </View>
             ) : (
               downloadedModels.map(m => (
-                <TouchableOpacity key={m.langCode}
+                <TouchableOpacity key={m.voiceDirName}
                   style={[styles.voiceOption, { backgroundColor: theme.colors.darkerBg }]}
-                  onPress={() => { setLanguage(m.langCode); setShowVoicePicker(false); }}>
+                  onPress={() => { setVoice(m); setShowVoicePicker(false); }}>
                   <View style={[styles.voiceAvatar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                     <VoiceIcon size={20} color={theme.colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{m.label}</Text>
-                    <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>{m.langCode.toUpperCase()} · Piper VITS</Text>
+                    <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{m.voiceLabel}</Text>
+                    <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>{m.label} · Piper VITS</Text>
                   </View>
                 </TouchableOpacity>
               ))

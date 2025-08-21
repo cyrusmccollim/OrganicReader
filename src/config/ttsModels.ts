@@ -1,99 +1,87 @@
 export interface PiperModelEntry {
-  langCode: string;
-  detectionCode: string;
-  label: string;
-  zipUrl: string;         // URL to .zip archive (run scripts/package-tts-models.sh to create)
-  voiceDirName: string;   // inner directory name inside the zip
+  langCode: string;       // ISO 639-1, e.g. 'en', 'fr'
+  detectionCode: string;  // used by LanguageDetector
+  label: string;          // language label, e.g. 'English'
+  voiceLabel: string;     // specific voice, e.g. 'Ryan (US)'
+  zipUrl: string;         // URL to .zip archive hosted on GitHub releases
+  voiceDirName: string;   // inner directory name inside the zip (unique key)
   modelOnnxName: string;  // e.g. "en_US-ryan-medium.onnx"
   modelSizeBytes: number;
   sampleRate: number;
 }
 
-// TODO: Run scripts/package-tts-models.sh then upload the .zip files to your CDN.
-//       Replace BASE with your actual hosting URL.
-const BASE = 'https://YOUR_CDN_URL/tts-models';
+// GitHub releases tag: tts-models
+// To populate: run scripts/package-tts-models.sh, then:
+//   gh release create tts-models tts-zips/*.zip --title "TTS Models"
+const BASE = 'https://github.com/cyrusmccollim/OrganicReader/releases/download/tts-models';
+
+function entry(
+  langCode: string,
+  detectionCode: string,
+  label: string,
+  voiceLabel: string,
+  name: string,
+  onnx: string,
+  bytes: number,
+  rate: number,
+): PiperModelEntry {
+  return {
+    langCode, detectionCode, label, voiceLabel,
+    zipUrl: `${BASE}/vits-piper-${name}.zip`,
+    voiceDirName: `vits-piper-${name}`,
+    modelOnnxName: onnx,
+    modelSizeBytes: bytes,
+    sampleRate: rate,
+  };
+}
 
 export const PIPER_MODELS: PiperModelEntry[] = [
-  {
-    langCode: 'en',
-    detectionCode: 'en',
-    label: 'English (US)',
-    zipUrl: `${BASE}/vits-piper-en_US-ryan-medium.zip`,
-    voiceDirName: 'vits-piper-en_US-ryan-medium',
-    modelOnnxName: 'en_US-ryan-medium.onnx',
-    modelSizeBytes: 64_000_000,
-    sampleRate: 22050,
-  },
-  {
-    langCode: 'fr',
-    detectionCode: 'fr',
-    label: 'French',
-    zipUrl: `${BASE}/vits-piper-fr_FR-mls-medium.zip`,
-    voiceDirName: 'vits-piper-fr_FR-mls-medium',
-    modelOnnxName: 'fr_FR-mls-medium.onnx',
-    modelSizeBytes: 63_000_000,
-    sampleRate: 22050,
-  },
-  {
-    langCode: 'de',
-    detectionCode: 'de',
-    label: 'German',
-    zipUrl: `${BASE}/vits-piper-de_DE-thorsten-high.zip`,
-    voiceDirName: 'vits-piper-de_DE-thorsten-high',
-    modelOnnxName: 'de_DE-thorsten-high.onnx',
-    modelSizeBytes: 85_000_000,
-    sampleRate: 22050,
-  },
-  {
-    langCode: 'es',
-    detectionCode: 'es',
-    label: 'Spanish',
-    zipUrl: `${BASE}/vits-piper-es_ES-mls_9972-low.zip`,
-    voiceDirName: 'vits-piper-es_ES-mls_9972-low',
-    modelOnnxName: 'es_ES-mls_9972-low.onnx',
-    modelSizeBytes: 29_000_000,
-    sampleRate: 16000,
-  },
-  {
-    langCode: 'it',
-    detectionCode: 'it',
-    label: 'Italian',
-    zipUrl: `${BASE}/vits-piper-it_IT-riccardo-x_low.zip`,
-    voiceDirName: 'vits-piper-it_IT-riccardo-x_low',
-    modelOnnxName: 'it_IT-riccardo-x_low.onnx',
-    modelSizeBytes: 29_000_000,
-    sampleRate: 16000,
-  },
-  {
-    langCode: 'pt',
-    detectionCode: 'pt',
-    label: 'Portuguese',
-    zipUrl: `${BASE}/vits-piper-pt_BR-faber-medium.zip`,
-    voiceDirName: 'vits-piper-pt_BR-faber-medium',
-    modelOnnxName: 'pt_BR-faber-medium.onnx',
-    modelSizeBytes: 63_000_000,
-    sampleRate: 22050,
-  },
-  {
-    langCode: 'ru',
-    detectionCode: 'ru',
-    label: 'Russian',
-    zipUrl: `${BASE}/vits-piper-ru_RU-irinia-medium.zip`,
-    voiceDirName: 'vits-piper-ru_RU-irinia-medium',
-    modelOnnxName: 'ru_RU-irinia-medium.onnx',
-    modelSizeBytes: 63_000_000,
-    sampleRate: 22050,
-  },
-  {
-    langCode: 'zh',
-    detectionCode: 'zh',
-    label: 'Chinese',
-    zipUrl: `${BASE}/vits-piper-zh_CN-huayan-medium.zip`,
-    voiceDirName: 'vits-piper-zh_CN-huayan-medium',
-    modelOnnxName: 'zh_CN-huayan-medium.onnx',
-    modelSizeBytes: 63_000_000,
-    sampleRate: 22050,
-  },
+  // ── English ──────────────────────────────────────────────────────────────
+  entry('en', 'en', 'English', 'Ryan (US)',       'en_US-ryan-medium',       'en_US-ryan-medium.onnx',       64_000_000, 22050),
+  entry('en', 'en', 'English', 'Lessac (US)',     'en_US-lessac-medium',     'en_US-lessac-medium.onnx',     64_000_000, 22050),
+  entry('en', 'en', 'English', 'Joe (US)',         'en_US-joe-medium',        'en_US-joe-medium.onnx',        64_000_000, 22050),
+  entry('en', 'en', 'English', 'HFC Female (US)', 'en_US-hfc_female-medium', 'en_US-hfc_female-medium.onnx', 64_000_000, 22050),
+  entry('en', 'en', 'English', 'Alan (UK)',        'en_GB-alan-medium',       'en_GB-alan-medium.onnx',       64_000_000, 22050),
+  entry('en', 'en', 'English', 'Alba (UK)',        'en_GB-alba-medium',       'en_GB-alba-medium.onnx',       64_000_000, 22050),
+
+  // ── French ───────────────────────────────────────────────────────────────
+  entry('fr', 'fr', 'French', 'Siwis',  'fr_FR-siwis-medium', 'fr_FR-siwis-medium.onnx', 64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'UPMC',   'fr_FR-upmc-medium',  'fr_FR-upmc-medium.onnx',  64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Tom',    'fr_FR-tom-medium',   'fr_FR-tom-medium.onnx',   64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Miro',   'fr_FR-miro-high',    'fr_FR-miro-high.onnx',    85_000_000, 22050),
+
+  // ── German ───────────────────────────────────────────────────────────────
+  entry('de', 'de', 'German', 'Thorsten', 'de_DE-thorsten-medium', 'de_DE-thorsten-medium.onnx', 64_000_000, 22050),
+  entry('de', 'de', 'German', 'Miro',     'de_DE-miro-high',       'de_DE-miro-high.onnx',       85_000_000, 22050),
+
+  // ── Spanish ──────────────────────────────────────────────────────────────
+  entry('es', 'es', 'Spanish', 'Dave (ES)',     'es_ES-davefx-medium',   'es_ES-davefx-medium.onnx',   64_000_000, 22050),
+  entry('es', 'es', 'Spanish', 'Sharvard (ES)', 'es_ES-sharvard-medium', 'es_ES-sharvard-medium.onnx', 64_000_000, 22050),
+  entry('es', 'es', 'Spanish', 'Ald (MX)',      'es_MX-ald-medium',      'es_MX-ald-medium.onnx',      64_000_000, 22050),
+
+  // ── Italian ──────────────────────────────────────────────────────────────
+  entry('it', 'it', 'Italian', 'Paola', 'it_IT-paola-medium', 'it_IT-paola-medium.onnx', 64_000_000, 22050),
+  entry('it', 'it', 'Italian', 'Miro',  'it_IT-miro-high',    'it_IT-miro-high.onnx',    85_000_000, 22050),
+
+  // ── Portuguese ───────────────────────────────────────────────────────────
+  entry('pt', 'pt', 'Portuguese', 'Faber (BR)', 'pt_BR-faber-medium', 'pt_BR-faber-medium.onnx', 64_000_000, 22050),
+  entry('pt', 'pt', 'Portuguese', 'Cadu (BR)',  'pt_BR-cadu-medium',  'pt_BR-cadu-medium.onnx',  64_000_000, 22050),
+  entry('pt', 'pt', 'Portuguese', 'Tugão (PT)', 'pt_PT-tugao-medium', 'pt_PT-tugao-medium.onnx', 64_000_000, 22050),
+
+  // ── Russian ──────────────────────────────────────────────────────────────
+  entry('ru', 'ru', 'Russian', 'Irina',  'ru_RU-irina-medium',  'ru_RU-irina-medium.onnx',  64_000_000, 22050),
+  entry('ru', 'ru', 'Russian', 'Denis',  'ru_RU-denis-medium',  'ru_RU-denis-medium.onnx',  64_000_000, 22050),
+  entry('ru', 'ru', 'Russian', 'Dmitri', 'ru_RU-dmitri-medium', 'ru_RU-dmitri-medium.onnx', 64_000_000, 22050),
+
+  // ── Chinese ──────────────────────────────────────────────────────────────
+  entry('zh', 'zh', 'Chinese', 'Huayan', 'zh_CN-huayan-medium', 'zh_CN-huayan-medium.onnx', 64_000_000, 22050),
+
+  // ── Arabic ───────────────────────────────────────────────────────────────
+  entry('ar', 'ar', 'Arabic', 'Kareem', 'ar_JO-kareem-medium', 'ar_JO-kareem-medium.onnx', 64_000_000, 22050),
+
+  // ── Hindi ────────────────────────────────────────────────────────────────
+  entry('hi', 'hi', 'Hindi', 'Pratham', 'hi_IN-pratham-medium', 'hi_IN-pratham-medium.onnx', 64_000_000, 22050),
+  entry('hi', 'hi', 'Hindi', 'Rohan',   'hi_IN-rohan-medium',   'hi_IN-rohan-medium.onnx',   64_000_000, 22050),
 ];
 
 export function findModel(langCode: string): PiperModelEntry {

@@ -8,7 +8,7 @@ import { TTSBuffer, BufferSegment } from '../services/tts/TTSBuffer';
 import { cleanTmpDir } from '../services/tts/TTSEngine';
 import { setupTrackPlayer } from '../services/tts/trackPlayerSetup';
 import { usePlayback } from './PlaybackContext';
-import { PiperModelEntry } from '../config/ttsModels';
+import { PiperModelEntry, findModel } from '../config/ttsModels';
 
 export type TTSState =
   | 'idle'
@@ -37,8 +37,8 @@ interface TTSContextType {
   seekToSentence: (index: number) => void;
   jumpSeconds: (delta: number) => void;
   setSpeed: (speed: number) => Promise<void>;
-  setLanguage: (langCode: string) => void;
-  deleteDownloadedModel: (langCode: string) => Promise<void>;
+  setVoice: (entry: PiperModelEntry) => void;
+  deleteDownloadedModel: (entry: PiperModelEntry) => Promise<void>;
 }
 
 const TTSContext = createContext<TTSContextType>(null!);
@@ -60,7 +60,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
   const rawTextRef = useRef<string>('');
   const langCodeRef = useRef<string>('en');
-  const overrideLangRef = useRef<string | null>(null);
+  const overrideEntryRef = useRef<PiperModelEntry | null>(null);
   const sampleRateRef = useRef(22050);
   const bufferRef = useRef<TTSBuffer | null>(null);
   const timingsRef = useRef<SentenceTiming[]>([]);
@@ -70,7 +70,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   // RNTP progress polling
   const { position } = useProgress(250);
 
-  // Track cumulative start times per sentence index in RNTP queue
+  // Track cumulative start times per queue index
   const queueStartMsRef = useRef<number[]>([]);
 
   // Map sentence index → queue index
@@ -79,7 +79,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
   const refreshDownloadedModels = useCallback(async () => {
     const all = listAll();
-    const checked = await Promise.all(all.map(m => isDownloadedAsync(m.langCode)));
+    const checked = await Promise.all(all.map(m => isDownloadedAsync(m)));
     setDownloadedModels(all.filter((_, i) => checked[i]));
   }, []);
 
@@ -93,19 +93,15 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     if (ttsState !== 'playing' && ttsState !== 'paused') return;
     if (timingsRef.current.length === 0) return;
 
-    // Find which RNTP track index maps to which sentence
-    // Position is within the current track; we need absolute position
     const queueIdx = queueIndexRef.current;
     const trackStartMs = queueStartMsRef.current[queueIdx] ?? 0;
     const absoluteMs = trackStartMs + position * 1000;
 
-    // Find active sentence timing
     const timings = timingsRef.current;
     let activeIdx = 0;
     for (let i = 0; i < timings.length; i++) {
       if (absoluteMs >= timings[i].startMs && absoluteMs < timings[i].endMs) {
         activeIdx = timings[i].sentenceIndex;
-        // Find word
         const wordTimings = timings[i].wordTimings;
         let wordIdx = 0;
         for (let j = 0; j < wordTimings.length; j++) {
@@ -118,7 +114,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     setActiveSentenceIndex(activeIdx);
 
-    // Update progress fraction based on char position
     const sent = sentencesRef.current[activeIdx];
     if (sent) {
       setProgressFraction(sent.charStart / totalCharsRef.current);
@@ -130,7 +125,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       const idx = await TrackPlayer.getActiveTrackIndex();
       if (idx !== undefined && idx !== null) {
         queueIndexRef.current = idx;
-        // Generate more if buffer is running low
         bufferRef.current?.onSegmentConsumed();
       }
     }
@@ -153,7 +147,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       timingsRef.current = next;
       return next;
     });
-    // Record cumulative start time for this queue entry
     const queueIdx = queueStartMsRef.current.length;
     queueStartMsRef.current.push(segment.timing.startMs);
     sentenceToQueueRef.current.set(segment.sentenceIndex, queueIdx);
@@ -178,8 +171,9 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     setActiveWordIndex(0);
     setProgressFraction(0);
 
-    const lang = overrideLangRef.current ?? detectLanguage(rawText);
-    langCodeRef.current = lang;
+    const detectedLang = detectLanguage(rawText);
+    langCodeRef.current = detectedLang;
+    const entry = overrideEntryRef.current ?? findModel(detectedLang);
 
     const segs = segmentText(rawText, autoSkip);
     setSentences(segs);
@@ -192,11 +186,11 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     }
 
     setTtsState('downloading');
-    setDownloadLanguage(lang);
+    setDownloadLanguage(entry.voiceLabel);
     setDownloadProgress(0);
 
     try {
-      const model = await ensureModel(lang, (f) => setDownloadProgress(f));
+      const model = await ensureModel(entry, (f) => setDownloadProgress(f));
       sampleRateRef.current = model.entry.sampleRate;
       await refreshDownloadedModels();
     } catch (err) {
@@ -229,7 +223,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     setTtsState('seeking');
 
-    // Read existing timing BEFORE clearing (fixes the timing-reset bug)
+    // Read existing timing BEFORE clearing
     const existingTiming = timingsRef.current.find(t => t.sentenceIndex === index);
     const startMs = existingTiming?.startMs ?? 0;
 
@@ -272,13 +266,11 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     const absoluteMs = trackStartMs + position * 1000;
     const targetMs = absoluteMs + delta * 1000;
 
-    // Find sentence containing targetMs
     let targetSentIdx = 0;
     for (let i = 0; i < timings.length; i++) {
       if (targetMs >= timings[i].startMs) targetSentIdx = timings[i].sentenceIndex;
     }
 
-    // Check if the target is in an already-queued segment
     const targetQueueIdx = sentenceToQueueRef.current.get(targetSentIdx);
     if (targetQueueIdx !== undefined) {
       await TrackPlayer.skip(targetQueueIdx);
@@ -296,16 +288,15 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     await TrackPlayer.setRate(speed);
   }, []);
 
-  const setLanguage = useCallback((langCode: string) => {
-    overrideLangRef.current = langCode;
-    // Re-init TTS with new language if we have text
+  const setVoice = useCallback((entry: PiperModelEntry) => {
+    overrideEntryRef.current = entry;
     if (rawTextRef.current) {
       initTTS(rawTextRef.current);
     }
   }, [initTTS]);
 
-  const deleteDownloadedModel = useCallback(async (langCode: string) => {
-    await deleteModel(langCode);
+  const deleteDownloadedModel = useCallback(async (entry: PiperModelEntry) => {
+    await deleteModel(entry);
     refreshDownloadedModels();
   }, [refreshDownloadedModels]);
 
@@ -320,7 +311,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [ttsState]);
 
-  // Expose initTTS as stable ref-based wrapper (doesn't need to be in memo deps everywhere)
   const initTTSRef = useRef(initTTS);
   initTTSRef.current = initTTS;
 
@@ -341,7 +331,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     seekToSentence,
     jumpSeconds,
     setSpeed,
-    setLanguage,
+    setVoice,
     deleteDownloadedModel,
   };
 
