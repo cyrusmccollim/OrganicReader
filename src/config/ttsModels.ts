@@ -3,17 +3,27 @@ export interface PiperModelEntry {
   detectionCode: string;  // used by LanguageDetector
   label: string;          // language label, e.g. 'English'
   voiceLabel: string;     // specific voice, e.g. 'Ryan (US)'
-  zipUrl: string;         // URL to .zip archive hosted on GitHub releases
-  voiceDirName: string;   // inner directory name inside the zip (unique key)
+  voiceDirName: string;   // local storage dir + HuggingFace repo name (unique key)
   modelOnnxName: string;  // e.g. "en_US-ryan-medium.onnx"
   modelSizeBytes: number;
   sampleRate: number;
 }
 
-// GitHub releases tag: tts-models
-// To populate: run scripts/package-tts-models.sh, then:
-//   gh release create tts-models tts-zips/*.zip --title "TTS Models"
-const BASE = 'https://github.com/cyrusmccollim/OrganicReader/releases/download/tts-models';
+const HF = 'https://huggingface.co/csukuangfj';
+
+export function onnxUrl(entry: PiperModelEntry): string {
+  return `${HF}/${entry.voiceDirName}/resolve/main/${entry.modelOnnxName}`;
+}
+
+export function tokensUrl(entry: PiperModelEntry): string {
+  return `${HF}/${entry.voiceDirName}/resolve/main/tokens.txt`;
+}
+
+// espeak-ng-data is shared across all voices.
+// To populate: run scripts/package-espeak.sh, then upload the resulting zip.
+//   gh release create tts-models espeak-ng-data.zip --title "TTS Assets"
+export const ESPEAK_ZIP_URL =
+  'https://github.com/cyrusmccollim/OrganicReader/releases/download/tts-models/espeak-ng-data.zip';
 
 function entry(
   langCode: string,
@@ -27,7 +37,6 @@ function entry(
 ): PiperModelEntry {
   return {
     langCode, detectionCode, label, voiceLabel,
-    zipUrl: `${BASE}/vits-piper-${name}.zip`,
     voiceDirName: `vits-piper-${name}`,
     modelOnnxName: onnx,
     modelSizeBytes: bytes,
@@ -45,10 +54,10 @@ export const PIPER_MODELS: PiperModelEntry[] = [
   entry('en', 'en', 'English', 'Alba (UK)',        'en_GB-alba-medium',       'en_GB-alba-medium.onnx',       64_000_000, 22050),
 
   // ── French ───────────────────────────────────────────────────────────────
-  entry('fr', 'fr', 'French', 'Siwis',  'fr_FR-siwis-medium', 'fr_FR-siwis-medium.onnx', 64_000_000, 22050),
-  entry('fr', 'fr', 'French', 'UPMC',   'fr_FR-upmc-medium',  'fr_FR-upmc-medium.onnx',  64_000_000, 22050),
-  entry('fr', 'fr', 'French', 'Tom',    'fr_FR-tom-medium',   'fr_FR-tom-medium.onnx',   64_000_000, 22050),
-  entry('fr', 'fr', 'French', 'Miro',   'fr_FR-miro-high',    'fr_FR-miro-high.onnx',    85_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Siwis', 'fr_FR-siwis-medium', 'fr_FR-siwis-medium.onnx', 64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'UPMC',  'fr_FR-upmc-medium',  'fr_FR-upmc-medium.onnx',  64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Tom',   'fr_FR-tom-medium',   'fr_FR-tom-medium.onnx',   64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Miro',  'fr_FR-miro-high',    'fr_FR-miro-high.onnx',    85_000_000, 22050),
 
   // ── German ───────────────────────────────────────────────────────────────
   entry('de', 'de', 'German', 'Thorsten', 'de_DE-thorsten-medium', 'de_DE-thorsten-medium.onnx', 64_000_000, 22050),

@@ -1,9 +1,11 @@
 import RNFS from 'react-native-fs';
 import { unzip } from 'react-native-zip-archive';
 import TTSManager from 'react-native-sherpa-onnx-offline-tts';
-import { PIPER_MODELS, PiperModelEntry, findModel } from '../../config/ttsModels';
+import { PIPER_MODELS, PiperModelEntry, findModel, onnxUrl, tokensUrl, ESPEAK_ZIP_URL } from '../../config/ttsModels';
 
 const MODELS_DIR = `${RNFS.DocumentDirectoryPath}/tts-models`;
+const ESPEAK_DIR = `${MODELS_DIR}/espeak-ng-data`;
+const ESPEAK_MARKER = `${MODELS_DIR}/.espeak-installed`;
 
 export interface ActiveModel {
   entry: PiperModelEntry;
@@ -13,21 +15,48 @@ export interface ActiveModel {
 }
 
 async function ensureDir(path: string) {
-  const exists = await RNFS.exists(path);
-  if (!exists) await RNFS.mkdir(path);
+  if (!await RNFS.exists(path)) await RNFS.mkdir(path);
+}
+
+async function downloadFile(
+  url: string,
+  dest: string,
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const { jobId, promise } = RNFS.downloadFile({
+      fromUrl: url,
+      toFile: dest,
+      background: true,
+      progressInterval: 500,
+      progress: (res) => {
+        if (res.contentLength > 0) onProgress?.(res.bytesWritten / res.contentLength);
+      },
+    });
+    promise.then(() => resolve()).catch(reject);
+    void jobId;
+  });
+}
+
+async function ensureEspeakData(onProgress?: (fraction: number) => void): Promise<void> {
+  if (await RNFS.exists(ESPEAK_MARKER)) return;
+
+  const archive = `${MODELS_DIR}/espeak-ng-data.zip`;
+  if (!await RNFS.exists(archive)) {
+    await downloadFile(ESPEAK_ZIP_URL, archive, onProgress);
+  }
+
+  await unzip(archive, MODELS_DIR);
+  await RNFS.unlink(archive).catch(() => {});
+  await RNFS.writeFile(ESPEAK_MARKER, '1', 'utf8');
 }
 
 function voiceDir(entry: PiperModelEntry): string {
   return `${MODELS_DIR}/${entry.voiceDirName}`;
 }
 
-function archivePath(entry: PiperModelEntry): string {
-  return `${MODELS_DIR}/${entry.voiceDirName}.archive`;
-}
-
-async function isModelExtracted(entry: PiperModelEntry): Promise<boolean> {
-  const onnxPath = `${voiceDir(entry)}/${entry.modelOnnxName}`;
-  return RNFS.exists(onnxPath);
+async function isModelDownloaded(entry: PiperModelEntry): Promise<boolean> {
+  return RNFS.exists(`${voiceDir(entry)}/${entry.modelOnnxName}`);
 }
 
 export async function ensureModel(
@@ -36,48 +65,28 @@ export async function ensureModel(
 ): Promise<ActiveModel> {
   await ensureDir(MODELS_DIR);
 
-  const extracted = await isModelExtracted(entry);
-  if (!extracted) {
-    const archive = archivePath(entry);
-    const archiveExists = await RNFS.exists(archive);
+  const dir = voiceDir(entry);
+  const modelPath = `${dir}/${entry.modelOnnxName}`;
+  const tPath = `${dir}/tokens.txt`;
 
-    if (!archiveExists) {
-      await new Promise<void>((resolve, reject) => {
-        const { jobId, promise } = RNFS.downloadFile({
-          fromUrl: entry.zipUrl,
-          toFile: archive,
-          background: true,
-          progressInterval: 500,
-          progress: (res) => {
-            if (res.contentLength > 0) {
-              onProgress?.(res.bytesWritten / res.contentLength * 0.7);
-            }
-          },
-        });
-        promise.then(() => resolve()).catch(reject);
-        void jobId;
-      });
-    }
-
-    onProgress?.(0.75);
-    await unzip(archive, MODELS_DIR);
-    onProgress?.(0.95);
-    await RNFS.unlink(archive).catch(() => {});
-    onProgress?.(1.0);
+  if (!await isModelDownloaded(entry)) {
+    await ensureDir(dir);
+    // .onnx is ~64MB, tokens.txt is ~1KB — apportion progress accordingly
+    await downloadFile(onnxUrl(entry), modelPath, p => onProgress?.(p * 0.85));
+    await downloadFile(tokensUrl(entry), tPath);
+    onProgress?.(0.88);
   }
 
-  const base = voiceDir(entry);
-  const modelPath = `${base}/${entry.modelOnnxName}`;
-  const tokensPath = `${base}/tokens.txt`;
-  const dataDirPath = `${base}/espeak-ng-data`;
+  // espeak-ng-data is shared; download once for all voices
+  await ensureEspeakData(p => onProgress?.(0.88 + p * 0.12));
+  onProgress?.(1.0);
 
-  const cfg = JSON.stringify({ modelPath, tokensPath, dataDirPath });
+  const cfg = JSON.stringify({ modelPath, tokensPath: tPath, dataDirPath: ESPEAK_DIR });
   await TTSManager.initialize(cfg);
 
-  return { entry, modelPath, tokensPath, dataDirPath };
+  return { entry, modelPath, tokensPath: tPath, dataDirPath: ESPEAK_DIR };
 }
 
-// Convenience: ensure model by language code (uses default voice for that language)
 export async function ensureModelForLang(
   langCode: string,
   onProgress?: (fraction: number) => void,
@@ -86,7 +95,7 @@ export async function ensureModelForLang(
 }
 
 export async function isDownloadedAsync(entry: PiperModelEntry): Promise<boolean> {
-  return isModelExtracted(entry);
+  return isModelDownloaded(entry);
 }
 
 export function listAll(): PiperModelEntry[] {
@@ -95,6 +104,5 @@ export function listAll(): PiperModelEntry[] {
 
 export async function deleteModel(entry: PiperModelEntry): Promise<void> {
   const dir = voiceDir(entry);
-  const exists = await RNFS.exists(dir);
-  if (exists) await RNFS.unlink(dir);
+  if (await RNFS.exists(dir)) await RNFS.unlink(dir);
 }
