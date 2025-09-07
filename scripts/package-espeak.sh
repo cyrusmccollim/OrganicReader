@@ -1,4 +1,14 @@
 #!/bin/bash
+# Run once to package espeak-ng-data as a .zip, then commit it to /docs/.
+# This is the only file you need to host — voice models download directly
+# from HuggingFace (csukuangfj/vits-piper-*).
+#
+# After running, upload to github.com/cyrusmccollim/OrganicReaderAssets:
+#   cd ~/path/to/OrganicReaderAssets
+#   mv ~/path/to/OrganicReader/espeak-ng-data.zip .
+#   git add espeak-ng-data.zip && git commit -m "Add espeak-ng-data" && git push
+#
+# Then enable GitHub Pages on OrganicReaderAssets: Settings → Pages → main → / (root)
 
 set -e
 
@@ -18,5 +28,8 @@ rm -rf /tmp/espeak-ng-data /tmp/espeak-ng-data.tar.bz2
 echo ""
 echo "Done → espeak-ng-data.zip"
 echo ""
-echo "Upload with:"
-echo "  gh release create tts-models espeak-ng-data.zip --title \"TTS Assets\""
+echo "Next steps:"
+echo "  cd ~/path/to/OrganicReaderAssets"
+echo "  mv ~/path/to/OrganicReader/espeak-ng-data.zip ."
+echo "  git add espeak-ng-data.zip && git commit -m 'Add espeak-ng-data' && git push"
+echo "  Enable Pages: Settings → Pages → main → / (root)"

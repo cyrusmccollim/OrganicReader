@@ -20,10 +20,10 @@ export function tokensUrl(entry: PiperModelEntry): string {
 }
 
 // espeak-ng-data is shared across all voices.
-// To populate: run scripts/package-espeak.sh, then upload the resulting zip.
-//   gh release create tts-models espeak-ng-data.zip --title "TTS Assets"
+// To populate: run scripts/package-espeak.sh, commit espeak-ng-data.zip to
+// github.com/cyrusmccollim/OrganicReaderAssets, and enable Pages on that repo.
 export const ESPEAK_ZIP_URL =
-  'https://github.com/cyrusmccollim/OrganicReader/releases/download/tts-models/espeak-ng-data.zip';
+  'https://cyrusmccollim.github.io/OrganicReaderAssets/espeak-ng-data.zip';
 
 function entry(
   langCode: string,
