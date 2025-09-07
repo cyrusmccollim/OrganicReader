@@ -38,8 +38,6 @@ interface PlayerSettings {
   autoHidePlayer: boolean;
   autoScroll: boolean;
   playbackSpeed: number;
-  selectedSpeakerIndex: number;
-  overrideLanguage: string | null;
 }
 
 interface PlaybackContextType {
@@ -75,8 +73,6 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   autoHidePlayer: false,
   autoScroll: true,
   playbackSpeed: 1.0,
-  selectedSpeakerIndex: 0,
-  overrideLanguage: null,
 };
 
 const STORAGE_KEYS = {
