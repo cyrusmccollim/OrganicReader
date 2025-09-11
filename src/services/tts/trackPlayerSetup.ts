@@ -14,7 +14,6 @@ export async function setupTrackPlayer(): Promise<void> {
         Capability.SkipToNext,
         Capability.SkipToPrevious,
       ],
-      compactCapabilities: [Capability.Play, Capability.Pause],
     });
     setupDone = true;
   } catch {
