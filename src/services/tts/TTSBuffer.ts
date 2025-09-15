@@ -1,13 +1,16 @@
-import TrackPlayer from 'react-native-track-player';
+import { EmitterSubscription } from 'react-native';
 import { Sentence } from './TextSegmenter';
 import { SentenceTiming, buildSentenceTiming } from './TimingAccumulator';
 import { synthesize, deleteTempFile } from './TTSEngine';
+import { SimpleAudio } from './SimpleAudio';
 
 export interface BufferSegment {
   sentenceIndex: number;
   timing: SentenceTiming;
   audioPath: string;
 }
+
+const LOOKAHEAD = 3;
 
 export class TTSBuffer {
   private sentences: Sentence[];
@@ -19,7 +22,17 @@ export class TTSBuffer {
   private running = false;
   private nextGenIndex = 0;
   private cumulativeMs = 0;
+
+  // Generated segments waiting to be played
+  private readySegments: Array<{ index: number; timing: SentenceTiming; path: string }> = [];
+  private isPlaying = false;
   private generatedPaths: string[] = [];
+
+  // Wakes the generator loop when a segment is consumed
+  private loopSignal: (() => void) | null = null;
+
+  private completionSub: EmitterSubscription | null = null;
+  private errorSub: EmitterSubscription | null = null;
 
   constructor(
     sentences: Sentence[],
@@ -37,11 +50,34 @@ export class TTSBuffer {
     this.cancelled = false;
     this.nextGenIndex = fromIndex;
     this.cumulativeMs = fromMs;
+
+    this.completionSub = SimpleAudio.onComplete(() => {
+      if (!this.cancelled) this.handleComplete();
+    });
+    this.errorSub = SimpleAudio.onError((err) => {
+      if (!this.cancelled) this.onError(new Error(err));
+    });
+
     this.runLoop();
   }
 
-  onSegmentConsumed() {
-    if (!this.cancelled && !this.running) this.runLoop();
+  private handleComplete() {
+    this.isPlaying = false;
+    this.loopSignal?.();  // wake generator if it was waiting
+    this.playNextReady();
+  }
+
+  private async playNextReady() {
+    if (this.isPlaying || this.readySegments.length === 0 || this.cancelled) return;
+    const next = this.readySegments.shift()!;
+    this.isPlaying = true;
+    try {
+      await SimpleAudio.play(next.path);
+      this.onSegmentReady({ sentenceIndex: next.index, timing: next.timing, audioPath: next.path });
+    } catch (e) {
+      this.isPlaying = false;
+      if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
+    }
   }
 
   private async runLoop() {
@@ -49,34 +85,29 @@ export class TTSBuffer {
     this.running = true;
 
     while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
+      // Throttle: don't build up more than LOOKAHEAD segments
+      if (this.readySegments.length >= LOOKAHEAD) {
+        await new Promise<void>(resolve => { this.loopSignal = resolve; });
+        this.loopSignal = null;
+        continue;
+      }
+
       const sentence = this.sentences[this.nextGenIndex];
       const startMs = this.cumulativeMs;
 
       try {
         const segment = await synthesize(sentence.text, this.sampleRate);
-        if (this.cancelled) {
-          await deleteTempFile(segment.audioPath);
-          break;
-        }
+        if (this.cancelled) { await deleteTempFile(segment.audioPath); break; }
 
         this.generatedPaths.push(segment.audioPath);
         const timing = buildSentenceTiming(sentence, startMs, segment.durationMs);
         this.cumulativeMs += segment.durationMs;
         this.nextGenIndex++;
 
-        await TrackPlayer.add({
-          id: `seg_${sentence.index}`,
-          url: `file://${segment.audioPath}`,
-          title: `Sentence ${sentence.index}`,
-          artist: 'TTS',
-          duration: segment.durationMs / 1000,
-        });
-
-        this.onSegmentReady({ sentenceIndex: sentence.index, timing, audioPath: segment.audioPath });
-      } catch (err) {
-        if (!this.cancelled) {
-          this.onError(err instanceof Error ? err : new Error(String(err)));
-        }
+        this.readySegments.push({ index: sentence.index, timing, path: segment.audioPath });
+        this.playNextReady();
+      } catch (e) {
+        if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
         break;
       }
     }
@@ -87,14 +118,23 @@ export class TTSBuffer {
   flush() {
     this.cancelled = true;
     this.running = false;
+    this.isPlaying = false;
+    this.loopSignal?.();
+    this.loopSignal = null;
+    this.completionSub?.remove();
+    this.completionSub = null;
+    this.errorSub?.remove();
+    this.errorSub = null;
+
     const paths = [...this.generatedPaths];
     this.generatedPaths = [];
+    this.readySegments = [];
     this.nextGenIndex = 0;
     this.cumulativeMs = 0;
+
+    SimpleAudio.stop().catch(() => {});
     paths.forEach(p => deleteTempFile(p).catch(() => {}));
   }
 
-  destroy() {
-    this.flush();
-  }
+  destroy() { this.flush(); }
 }

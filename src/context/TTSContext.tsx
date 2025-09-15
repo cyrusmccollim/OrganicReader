@@ -1,19 +1,18 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import TrackPlayer, { Event, State, useProgress, useTrackPlayerEvents } from 'react-native-track-player';
+import { EmitterSubscription } from 'react-native';
 import { ensureModel, deleteModel, isDownloadedAsync, listAll } from '../services/tts/ModelRegistry';
 import { detectLanguage } from '../services/tts/LanguageDetector';
 import { segmentText, Sentence } from '../services/tts/TextSegmenter';
 import { SentenceTiming } from '../services/tts/TimingAccumulator';
 import { TTSBuffer, BufferSegment } from '../services/tts/TTSBuffer';
 import { cleanTmpDir } from '../services/tts/TTSEngine';
-import { setupTrackPlayer } from '../services/tts/trackPlayerSetup';
+import { SimpleAudio } from '../services/tts/SimpleAudio';
 import { usePlayback } from './PlaybackContext';
 import { PiperModelEntry, findModel } from '../config/ttsModels';
 
 export type TTSState =
   | 'idle'
   | 'downloading'
-  | 'initializing'
   | 'loading'
   | 'playing'
   | 'paused'
@@ -43,8 +42,6 @@ interface TTSContextType {
 
 const TTSContext = createContext<TTSContextType>(null!);
 
-const TRACKED_EVENTS = [Event.PlaybackActiveTrackChanged, Event.PlaybackQueueEnded];
-
 export function TTSProvider({ children }: { children: React.ReactNode }) {
   const { autoSkip } = usePlayback();
 
@@ -59,7 +56,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const [downloadedModels, setDownloadedModels] = useState<PiperModelEntry[]>([]);
 
   const rawTextRef = useRef<string>('');
-  const langCodeRef = useRef<string>('en');
   const overrideEntryRef = useRef<PiperModelEntry | null>(null);
   const sampleRateRef = useRef(22050);
   const bufferRef = useRef<TTSBuffer | null>(null);
@@ -67,15 +63,12 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const sentencesRef = useRef<Sentence[]>([]);
   const totalCharsRef = useRef(1);
 
-  // RNTP progress polling
-  const { position } = useProgress(250);
+  // Active segment tracking — set when onSegmentReady fires
+  const activeTimingRef = useRef<SentenceTiming | null>(null);
+  const positionWithinFileRef = useRef(0);
 
-  // Track cumulative start times per queue index
-  const queueStartMsRef = useRef<number[]>([]);
-
-  // Map sentence index → queue index
-  const sentenceToQueueRef = useRef<Map<number, number>>(new Map());
-  const queueIndexRef = useRef(0);
+  // Subscriptions
+  const progressSubRef = useRef<EmitterSubscription | null>(null);
 
   const refreshDownloadedModels = useCallback(async () => {
     const all = listAll();
@@ -84,61 +77,42 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setupTrackPlayer().catch(() => {});
     refreshDownloadedModels();
   }, [refreshDownloadedModels]);
 
-  // Update active sentence/word from RNTP position
+  // Subscribe to AudioProgress for word/sentence highlighting
   useEffect(() => {
-    if (ttsState !== 'playing' && ttsState !== 'paused') return;
-    if (timingsRef.current.length === 0) return;
+    progressSubRef.current?.remove();
+    progressSubRef.current = SimpleAudio.onProgress((posMs) => {
+      positionWithinFileRef.current = posMs;
+      const timing = activeTimingRef.current;
+      if (!timing || (ttsState !== 'playing' && ttsState !== 'paused')) return;
 
-    const queueIdx = queueIndexRef.current;
-    const trackStartMs = queueStartMsRef.current[queueIdx] ?? 0;
-    const absoluteMs = trackStartMs + position * 1000;
+      const absoluteMs = timing.startMs + posMs;
 
-    const timings = timingsRef.current;
-    let activeIdx = 0;
-    for (let i = 0; i < timings.length; i++) {
-      if (absoluteMs >= timings[i].startMs && absoluteMs < timings[i].endMs) {
-        activeIdx = timings[i].sentenceIndex;
-        const wordTimings = timings[i].wordTimings;
-        let wordIdx = 0;
-        for (let j = 0; j < wordTimings.length; j++) {
-          if (absoluteMs >= wordTimings[j].startMs) wordIdx = j;
-        }
-        setActiveWordIndex(wordIdx);
-        break;
+      // Word highlighting
+      const wordTimings = timing.wordTimings;
+      let wordIdx = 0;
+      for (let j = 0; j < wordTimings.length; j++) {
+        if (absoluteMs >= wordTimings[j].startMs) wordIdx = j;
       }
-    }
+      setActiveWordIndex(wordIdx);
 
-    setActiveSentenceIndex(activeIdx);
-
-    const sent = sentencesRef.current[activeIdx];
-    if (sent) {
-      setProgressFraction(sent.charStart / totalCharsRef.current);
-    }
-  }, [position, ttsState]);
-
-  useTrackPlayerEvents(TRACKED_EVENTS, async (event) => {
-    if (event.type === Event.PlaybackActiveTrackChanged) {
-      const idx = await TrackPlayer.getActiveTrackIndex();
-      if (idx !== undefined && idx !== null) {
-        queueIndexRef.current = idx;
-        bufferRef.current?.onSegmentConsumed();
-      }
-    }
-    if (event.type === Event.PlaybackQueueEnded) {
-      setTtsState('paused');
-    }
-  });
+      // Progress bar
+      const sent = sentencesRef.current[timing.sentenceIndex];
+      if (sent) setProgressFraction(sent.charStart / totalCharsRef.current);
+    });
+    return () => {
+      progressSubRef.current?.remove();
+      progressSubRef.current = null;
+    };
+  }, [ttsState]);
 
   const flushBuffer = useCallback(() => {
     bufferRef.current?.flush();
     bufferRef.current = null;
-    queueStartMsRef.current = [];
-    sentenceToQueueRef.current = new Map();
-    queueIndexRef.current = 0;
+    activeTimingRef.current = null;
+    positionWithinFileRef.current = 0;
   }, []);
 
   const onSegmentReady = useCallback((segment: BufferSegment) => {
@@ -147,9 +121,9 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       timingsRef.current = next;
       return next;
     });
-    const queueIdx = queueStartMsRef.current.length;
-    queueStartMsRef.current.push(segment.timing.startMs);
-    sentenceToQueueRef.current.set(segment.sentenceIndex, queueIdx);
+    activeTimingRef.current = segment.timing;
+    setActiveSentenceIndex(segment.sentenceIndex);
+    setTtsState('playing');
   }, []);
 
   const onBufferError = useCallback((err: Error) => {
@@ -170,7 +144,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     setProgressFraction(0);
 
     const detectedLang = detectLanguage(rawText);
-    langCodeRef.current = detectedLang;
     const entry = overrideEntryRef.current ?? findModel(detectedLang);
 
     const segs = segmentText(rawText, autoSkip);
@@ -178,18 +151,14 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     sentencesRef.current = segs;
     totalCharsRef.current = rawText.length || 1;
 
-    if (segs.length === 0) {
-      setTtsState('idle');
-      return;
-    }
+    if (segs.length === 0) { setTtsState('idle'); return; }
 
     setTtsState('downloading');
     setDownloadLanguage(entry.voiceLabel);
     setDownloadProgress(0);
 
     try {
-      await setupTrackPlayer();
-      await TrackPlayer.reset();
+      await SimpleAudio.stop();
       await cleanTmpDir();
       const model = await ensureModel(entry, (f) => setDownloadProgress(f));
       sampleRateRef.current = model.entry.sampleRate;
@@ -209,12 +178,12 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
   const play = useCallback(async () => {
     if (ttsState === 'idle' || ttsState === 'error') return;
-    await TrackPlayer.play();
+    await SimpleAudio.resume();
     setTtsState('playing');
   }, [ttsState]);
 
   const pause = useCallback(async () => {
-    await TrackPlayer.pause();
+    await SimpleAudio.pause();
     setTtsState('paused');
   }, []);
 
@@ -223,13 +192,8 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     if (index < 0 || index >= sents.length) return;
 
     setTtsState('seeking');
-
-    // Read existing timing BEFORE clearing
-    const existingTiming = timingsRef.current.find(t => t.sentenceIndex === index);
-    const startMs = existingTiming?.startMs ?? 0;
-
     flushBuffer();
-    await TrackPlayer.reset();
+
     setSentenceTimings([]);
     timingsRef.current = [];
 
@@ -239,12 +203,10 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       onSegmentReady,
       onBufferError,
     );
-    bufferRef.current.start(0, startMs);
+    bufferRef.current.start(0, 0);
 
     setActiveSentenceIndex(index);
     setProgressFraction(sents[index].charStart / totalCharsRef.current);
-    await TrackPlayer.play();
-    setTtsState('playing');
   }, [flushBuffer, onSegmentReady, onBufferError]);
 
   const seekToFraction = useCallback(async (f: number) => {
@@ -259,41 +221,36 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   }, [seekToSentence]);
 
   const jumpSeconds = useCallback(async (delta: number) => {
-    const timings = timingsRef.current;
-    if (timings.length === 0) return;
+    const timing = activeTimingRef.current;
+    if (!timing) return;
 
-    const queueIdx = queueIndexRef.current;
-    const trackStartMs = queueStartMsRef.current[queueIdx] ?? 0;
-    const absoluteMs = trackStartMs + position * 1000;
+    const absoluteMs = timing.startMs + positionWithinFileRef.current;
     const targetMs = absoluteMs + delta * 1000;
 
-    let targetSentIdx = 0;
+    // Find sentence containing targetMs
+    const timings = timingsRef.current;
+    let targetSentIdx = timing.sentenceIndex;
     for (let i = 0; i < timings.length; i++) {
-      if (targetMs >= timings[i].startMs) targetSentIdx = timings[i].sentenceIndex;
-    }
-
-    const targetQueueIdx = sentenceToQueueRef.current.get(targetSentIdx);
-    if (targetQueueIdx !== undefined) {
-      await TrackPlayer.skip(targetQueueIdx);
-      const sentTiming = timings.find(t => t.sentenceIndex === targetSentIdx);
-      if (sentTiming) {
-        const offsetSec = Math.max(0, (targetMs - sentTiming.startMs) / 1000);
-        await TrackPlayer.seekTo(offsetSec);
+      if (targetMs >= timings[i].startMs && targetMs < timings[i].endMs) {
+        targetSentIdx = timings[i].sentenceIndex;
+        // Seek within current file if same sentence
+        if (timings[i].sentenceIndex === timing.sentenceIndex) {
+          await SimpleAudio.seekTo(targetMs - timings[i].startMs);
+          return;
+        }
+        break;
       }
-    } else {
-      seekToSentence(targetSentIdx);
     }
-  }, [position, seekToSentence]);
+    await seekToSentence(targetSentIdx);
+  }, [seekToSentence]);
 
   const setSpeed = useCallback(async (speed: number) => {
-    await TrackPlayer.setRate(speed);
+    await SimpleAudio.setRate(speed);
   }, []);
 
   const setVoice = useCallback((entry: PiperModelEntry) => {
     overrideEntryRef.current = entry;
-    if (rawTextRef.current) {
-      initTTS(rawTextRef.current);
-    }
+    if (rawTextRef.current) initTTS(rawTextRef.current);
   }, [initTTS]);
 
   const deleteDownloadedModel = useCallback(async (entry: PiperModelEntry) => {
@@ -301,42 +258,21 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     refreshDownloadedModels();
   }, [refreshDownloadedModels]);
 
-  // Sync ttsState with actual RNTP playback state
-  useEffect(() => {
-    const sub = TrackPlayer.addEventListener(Event.PlaybackState, (e: { state: State }) => {
-      if (ttsState === 'seeking' || ttsState === 'downloading' || ttsState === 'initializing') return;
-      if (e.state === State.Playing) setTtsState('playing');
-      else if (e.state === State.Paused || e.state === State.Stopped) setTtsState('paused');
-      else if (e.state === State.Loading || e.state === State.Buffering) setTtsState('loading');
-    });
-    return () => sub.remove();
-  }, [ttsState]);
-
   const initTTSRef = useRef(initTTS);
   initTTSRef.current = initTTS;
 
-  const value: TTSContextType = {
-    ttsState,
-    downloadProgress,
-    downloadLanguage,
-    sentences,
-    sentenceTimings,
-    activeSentenceIndex,
-    activeWordIndex,
-    progressFraction,
-    downloadedModels,
-    initTTS: (text) => initTTSRef.current(text),
-    play,
-    pause,
-    seekToFraction,
-    seekToSentence,
-    jumpSeconds,
-    setSpeed,
-    setVoice,
-    deleteDownloadedModel,
-  };
-
-  return <TTSContext.Provider value={value}>{children}</TTSContext.Provider>;
+  return (
+    <TTSContext.Provider value={{
+      ttsState, downloadProgress, downloadLanguage,
+      sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
+      progressFraction, downloadedModels,
+      initTTS: (text) => initTTSRef.current(text),
+      play, pause, seekToFraction, seekToSentence, jumpSeconds,
+      setSpeed, setVoice, deleteDownloadedModel,
+    }}>
+      {children}
+    </TTSContext.Provider>
+  );
 }
 
 export function useTTS() {
