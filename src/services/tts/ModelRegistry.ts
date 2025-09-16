@@ -27,7 +27,6 @@ async function downloadFile(
     const { jobId, promise } = RNFS.downloadFile({
       fromUrl: url,
       toFile: dest,
-      background: true,
       progressInterval: 500,
       progress: (res) => {
         if (res.contentLength > 0) onProgress?.(res.bytesWritten / res.contentLength);
