@@ -5,7 +5,6 @@ import { PIPER_MODELS, PiperModelEntry, onnxUrl, tokensUrl, ESPEAK_ZIP_URL } fro
 
 const MODELS_DIR = `${RNFS.DocumentDirectoryPath}/tts-models`;
 const ESPEAK_DIR = `${MODELS_DIR}/espeak-ng-data`;
-const ESPEAK_MARKER = `${MODELS_DIR}/.espeak-installed`;
 
 export interface ActiveModel {
   entry: PiperModelEntry;
@@ -21,13 +20,19 @@ async function ensureDir(path: string) {
 async function downloadFile(
   url: string,
   dest: string,
+  minBytes: number,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  const result = await new Promise<{ statusCode: number }>((resolve, reject) => {
+  // Remove any leftover partial file
+  await RNFS.unlink(dest).catch(() => {});
+
+  const result = await new Promise<{ statusCode: number; bytesWritten: number }>((resolve, reject) => {
     const { jobId, promise } = RNFS.downloadFile({
       fromUrl: url,
       toFile: dest,
       progressInterval: 500,
+      connectionTimeout: 30000,
+      readTimeout: 120000,
       progress: (res) => {
         if (res.contentLength > 0) onProgress?.(res.bytesWritten / res.contentLength);
       },
@@ -35,25 +40,39 @@ async function downloadFile(
     promise.then(resolve).catch(reject);
     void jobId;
   });
+
   if (result.statusCode < 200 || result.statusCode >= 300) {
     await RNFS.unlink(dest).catch(() => {});
     throw new Error(`HTTP ${result.statusCode} fetching ${url}`);
   }
+
+  // Validate file size — catches truncated downloads and HTML error pages
+  const stat = await RNFS.stat(dest);
+  if (Number(stat.size) < minBytes) {
+    await RNFS.unlink(dest).catch(() => {});
+    throw new Error(`Download too small (${stat.size} bytes, expected ≥${minBytes}) for ${url}`);
+  }
 }
 
 async function ensureEspeakData(onProgress?: (fraction: number) => void): Promise<void> {
-  if (await RNFS.exists(ESPEAK_MARKER) && await RNFS.exists(ESPEAK_DIR)) return;
-  // Marker exists but dir is missing — previous install was corrupt; start over
-  await RNFS.unlink(ESPEAK_MARKER).catch(() => {});
+  // Already installed — verify the directory actually contains files
+  if (await RNFS.exists(ESPEAK_DIR)) {
+    const items = await RNFS.readDir(ESPEAK_DIR).catch(() => []);
+    if (items.length > 0) return;
+  }
 
   const archive = `${MODELS_DIR}/espeak-ng-data.zip`;
-  if (!await RNFS.exists(archive)) {
-    await downloadFile(ESPEAK_ZIP_URL, archive, onProgress);
-  }
+  // Always re-download — a leftover zip is likely corrupt if the dir is missing
+  await RNFS.unlink(archive).catch(() => {});
+  await downloadFile(ESPEAK_ZIP_URL, archive, 500_000, onProgress);
 
   await unzip(archive, MODELS_DIR);
   await RNFS.unlink(archive).catch(() => {});
-  await RNFS.writeFile(ESPEAK_MARKER, '1', 'utf8');
+
+  // Verify extraction succeeded
+  if (!await RNFS.exists(ESPEAK_DIR)) {
+    throw new Error('espeak-ng-data extraction failed');
+  }
 }
 
 function voiceDir(entry: PiperModelEntry): string {
@@ -61,7 +80,15 @@ function voiceDir(entry: PiperModelEntry): string {
 }
 
 async function isModelDownloaded(entry: PiperModelEntry): Promise<boolean> {
-  return RNFS.exists(`${voiceDir(entry)}/${entry.modelOnnxName}`);
+  const onnxPath = `${voiceDir(entry)}/${entry.modelOnnxName}`;
+  const tokensPath = `${voiceDir(entry)}/tokens.txt`;
+  return await RNFS.exists(onnxPath) && await RNFS.exists(tokensPath);
+}
+
+async function isEspeakReady(): Promise<boolean> {
+  if (!await RNFS.exists(ESPEAK_DIR)) return false;
+  const items = await RNFS.readDir(ESPEAK_DIR).catch(() => []);
+  return items.length > 0;
 }
 
 export async function ensureModel(
@@ -74,16 +101,20 @@ export async function ensureModel(
   const modelPath = `${dir}/${entry.modelOnnxName}`;
   const tPath = `${dir}/tokens.txt`;
 
-  if (!await isModelDownloaded(entry)) {
+  const modelReady = await isModelDownloaded(entry);
+  const espeakReady = await isEspeakReady();
+
+  if (!modelReady) {
     await ensureDir(dir);
-    // .onnx is ~64MB, tokens.txt is ~1KB — apportion progress accordingly
-    await downloadFile(onnxUrl(entry), modelPath, p => onProgress?.(p * 0.85));
-    await downloadFile(tokensUrl(entry), tPath);
+    await downloadFile(onnxUrl(entry), modelPath, 1_000_000, p => onProgress?.(p * 0.85));
+    await downloadFile(tokensUrl(entry), tPath, 100);
     onProgress?.(0.88);
   }
 
-  // espeak-ng-data is shared; download once for all voices
-  await ensureEspeakData(p => onProgress?.(0.88 + p * 0.12));
+  if (!espeakReady) {
+    await ensureEspeakData(p => onProgress?.(modelReady ? p : 0.88 + p * 0.12));
+  }
+
   onProgress?.(1.0);
 
   const cfg = JSON.stringify({ modelPath, tokensPath: tPath, dataDirPath: ESPEAK_DIR });
@@ -93,7 +124,7 @@ export async function ensureModel(
 }
 
 export async function isDownloadedAsync(entry: PiperModelEntry): Promise<boolean> {
-  return isModelDownloaded(entry);
+  return await isModelDownloaded(entry) && await isEspeakReady();
 }
 
 export function listAll(): PiperModelEntry[] {

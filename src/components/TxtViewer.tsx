@@ -119,44 +119,54 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       fontFamily ? { fontFamily } : null,
     ];
 
-    return (
-      <Text style={textStyle}>
-        {sentences.map((sent, si) => {
-          const isActive = si === activeSentenceIndex;
-          const words = sent.text.split(/(\s+)/);
+    // Build fragments from original content using sentence charStart/charEnd offsets.
+    // This preserves all original whitespace, newlines, and paragraph breaks.
+    const fragments: React.ReactNode[] = [];
+    let cursor = 0;
 
-          return (
-            <Text key={sent.index} onLayout={(e) => {
-              sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
-            }}>
-              <Text
-                suppressHighlighting
-                onPress={() => onSentenceTap?.(si)}
-                style={isActive ? undefined : { opacity: 0.65 }}
-              >
-                {words.map((word, wi) => {
-                  // wi*2 accounts for splitting on whitespace (odd indices are spaces)
-                  const wordIdx = Math.floor(wi / 2);
-                  const isActiveWord = isActive && wordIdx === activeWordIndex && wi % 2 === 0;
-                  if (wi % 2 === 1) {
-                    // Whitespace
-                    return <Text key={wi}>{word}</Text>;
-                  }
-                  return (
-                    <Text
-                      key={wi}
-                      style={isActiveWord ? styles.ttsWordHighlight : undefined}
-                    >
-                      {word}
-                    </Text>
-                  );
-                })}
-              </Text>
-            </Text>
-          );
-        })}
-      </Text>
-    );
+    for (let si = 0; si < sentences.length; si++) {
+      const sent = sentences[si];
+
+      // Gap between previous sentence end and this sentence start — original whitespace
+      if (sent.charStart > cursor) {
+        fragments.push(<Text key={`gap-${si}`}>{content.slice(cursor, sent.charStart)}</Text>);
+      }
+
+      const isActive = si === activeSentenceIndex;
+      const words = sent.text.split(/(\s+)/);
+
+      fragments.push(
+        <Text key={`s-${sent.index}`} onLayout={(e) => {
+          sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
+        }}>
+          <Text
+            suppressHighlighting
+            onPress={() => onSentenceTap?.(si)}
+            style={isActive ? undefined : { opacity: 0.65 }}
+          >
+            {words.map((word, wi) => {
+              const wordIdx = Math.floor(wi / 2);
+              const isActiveWord = isActive && wordIdx === activeWordIndex && wi % 2 === 0;
+              if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
+              return (
+                <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
+                  {word}
+                </Text>
+              );
+            })}
+          </Text>
+        </Text>,
+      );
+
+      cursor = sent.charEnd;
+    }
+
+    // Trailing content after the last sentence
+    if (cursor < content.length) {
+      fragments.push(<Text key="tail">{content.slice(cursor)}</Text>);
+    }
+
+    return <Text style={textStyle}>{fragments}</Text>;
   }, [sentences, content, activeSentenceIndex, activeWordIndex, onSentenceTap, styles, fontSize, readerTheme, fontFamily]);
 
   const renderSearchContent = useCallback(() => {

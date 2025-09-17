@@ -153,14 +153,23 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     if (segs.length === 0) { setTtsState('idle'); return; }
 
-    setTtsState('downloading');
-    setDownloadLanguage(entry.voiceLabel);
-    setDownloadProgress(0);
-
     try {
       await SimpleAudio.stop();
       await cleanTmpDir();
-      const model = await ensureModel(entry, (f) => setDownloadProgress(f));
+
+      // Check if we actually need to download anything
+      const alreadyDownloaded = await isDownloadedAsync(entry);
+      if (!alreadyDownloaded) {
+        setTtsState('downloading');
+        setDownloadLanguage(entry.voiceLabel);
+        setDownloadProgress(0);
+      } else {
+        setTtsState('loading');
+      }
+
+      const model = await ensureModel(entry, (f) => {
+        if (!alreadyDownloaded) setDownloadProgress(f);
+      });
       sampleRateRef.current = model.entry.sampleRate;
       await refreshDownloadedModels();
     } catch (err) {
