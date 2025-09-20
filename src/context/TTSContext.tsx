@@ -14,6 +14,7 @@ export type TTSState =
   | 'idle'
   | 'downloading'
   | 'loading'
+  | 'ready'
   | 'playing'
   | 'paused'
   | 'seeking'
@@ -32,6 +33,7 @@ interface TTSContextType {
   initTTS: (rawText: string) => void;
   play: () => Promise<void>;
   pause: () => Promise<void>;
+  stop: () => void;
   seekToFraction: (f: number) => Promise<void>;
   seekToSentence: (index: number) => void;
   jumpSeconds: (delta: number) => void;
@@ -62,6 +64,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const timingsRef = useRef<SentenceTiming[]>([]);
   const sentencesRef = useRef<Sentence[]>([]);
   const totalCharsRef = useRef(1);
+  const modelReadyRef = useRef(false);
 
   // Active segment tracking — set when onSegmentReady fires
   const activeTimingRef = useRef<SentenceTiming | null>(null);
@@ -136,6 +139,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     rawTextRef.current = rawText;
     flushBuffer();
+    modelReadyRef.current = false;
 
     setSentenceTimings([]);
     timingsRef.current = [];
@@ -157,7 +161,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       await SimpleAudio.stop();
       await cleanTmpDir();
 
-      // Check if we actually need to download anything
       const alreadyDownloaded = await isDownloadedAsync(entry);
       if (!alreadyDownloaded) {
         setTtsState('downloading');
@@ -178,45 +181,65 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setTtsState('loading');
     setDownloadLanguage(null);
+    modelReadyRef.current = true;
+    // Don't auto-play — wait for user to press play
+    setTtsState('ready');
+  }, [autoSkip, flushBuffer, refreshDownloadedModels]);
 
-    bufferRef.current = new TTSBuffer(segs, sampleRateRef.current, onSegmentReady, onBufferError);
+  const startBuffer = useCallback((fromIndex: number) => {
+    flushBuffer();
+    setSentenceTimings([]);
+    timingsRef.current = [];
+
+    const sents = sentencesRef.current;
+    bufferRef.current = new TTSBuffer(
+      fromIndex > 0 ? sents.slice(fromIndex) : sents,
+      sampleRateRef.current,
+      onSegmentReady,
+      onBufferError,
+    );
     bufferRef.current.start(0, 0);
-  }, [autoSkip, flushBuffer, onSegmentReady, onBufferError, refreshDownloadedModels]);
+  }, [flushBuffer, onSegmentReady, onBufferError]);
 
   const play = useCallback(async () => {
-    if (ttsState === 'idle' || ttsState === 'error') return;
+    if (ttsState === 'idle' || ttsState === 'error' || ttsState === 'downloading' || ttsState === 'loading') return;
+
+    if (ttsState === 'ready' || !bufferRef.current) {
+      // First play or after stop — start synthesis from current position
+      startBuffer(activeSentenceIndex);
+      return; // onSegmentReady will set state to 'playing'
+    }
+
     await SimpleAudio.resume();
     setTtsState('playing');
-  }, [ttsState]);
+  }, [ttsState, activeSentenceIndex, startBuffer]);
 
   const pause = useCallback(async () => {
     await SimpleAudio.pause();
     setTtsState('paused');
   }, []);
 
+  const stop = useCallback(() => {
+    flushBuffer();
+    SimpleAudio.stop().catch(() => {});
+    setTtsState(modelReadyRef.current ? 'ready' : 'idle');
+    setActiveSentenceIndex(0);
+    setActiveWordIndex(0);
+    setProgressFraction(0);
+    setSentenceTimings([]);
+    timingsRef.current = [];
+  }, [flushBuffer]);
+
   const seekToSentence = useCallback(async (index: number) => {
     const sents = sentencesRef.current;
     if (index < 0 || index >= sents.length) return;
 
     setTtsState('seeking');
-    flushBuffer();
-
-    setSentenceTimings([]);
-    timingsRef.current = [];
-
-    bufferRef.current = new TTSBuffer(
-      sents.slice(index),
-      sampleRateRef.current,
-      onSegmentReady,
-      onBufferError,
-    );
-    bufferRef.current.start(0, 0);
-
+    startBuffer(index);
     setActiveSentenceIndex(index);
     setProgressFraction(sents[index].charStart / totalCharsRef.current);
-  }, [flushBuffer, onSegmentReady, onBufferError]);
+  }, [startBuffer]);
 
   const seekToFraction = useCallback(async (f: number) => {
     const targetChar = f * totalCharsRef.current;
@@ -242,7 +265,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     for (let i = 0; i < timings.length; i++) {
       if (targetMs >= timings[i].startMs && targetMs < timings[i].endMs) {
         targetSentIdx = timings[i].sentenceIndex;
-        // Seek within current file if same sentence
         if (timings[i].sentenceIndex === timing.sentenceIndex) {
           await SimpleAudio.seekTo(targetMs - timings[i].startMs);
           return;
@@ -276,7 +298,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
       progressFraction, downloadedModels,
       initTTS: (text) => initTTSRef.current(text),
-      play, pause, seekToFraction, seekToSentence, jumpSeconds,
+      play, pause, stop, seekToFraction, seekToSentence, jumpSeconds,
       setSpeed, setVoice, deleteDownloadedModel,
     }}>
       {children}

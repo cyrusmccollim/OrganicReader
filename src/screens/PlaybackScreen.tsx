@@ -102,7 +102,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     ttsState, downloadProgress, downloadLanguage,
     sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
     progressFraction, downloadedModels,
-    initTTS, play, pause, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice,
+    initTTS, play, pause, stop, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice,
   } = useTTS();
   const { createTextFile } = useTextFileCreator();
 
@@ -134,8 +134,13 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const trackLayoutRef = useRef({ x: 0, width: 0 });
 
   const isPlaying = ttsState === 'playing';
-  const isLoading = ttsState === 'loading';
+  const isLoading = ttsState === 'loading' || ttsState === 'seeking';
   const isDownloading = ttsState === 'downloading';
+
+  // Stop playback when navigating away
+  useEffect(() => {
+    return () => { stop(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync reading progress with TTS position
   useEffect(() => {
@@ -307,7 +312,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     labelStyle: styles.toggleLabel,
   };
 
-  const ttsActive = ttsState !== 'idle' && sentences.length > 0;
+  const ttsActive = ttsState !== 'idle' && ttsState !== 'error' && sentences.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.darkBg }]}>
