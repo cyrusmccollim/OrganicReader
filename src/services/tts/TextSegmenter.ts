@@ -2,31 +2,44 @@ import { AutoSkipSettings } from '../../context/PlaybackContext';
 
 export interface Sentence {
   index: number;
-  text: string;
+  text: string;     // original raw slice of rawText — shown to user
+  ttsText: string;  // auto-skip processed version — fed to TTS engine
   charStart: number;
   charEnd: number;
+}
+
+interface RawSentence {
+  text: string;
+  start: number;
+  end: number;
 }
 
 // Abbreviations we do NOT want to split on
 const ABBREV = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|[A-Z])\.\s*$/;
 
-function splitSentences(raw: string): string[] {
+function splitSentences(raw: string): RawSentence[] {
   // Split on sentence-ending punctuation followed by whitespace + capital letter (or end)
   const re = /([.!?]+)(\s+)(?=[A-Z"'])/g;
-  const results: string[] = [];
+  const results: RawSentence[] = [];
   let last = 0;
 
   for (const match of raw.matchAll(re)) {
-    const end = match.index! + match[0].length;
-    const candidate = raw.slice(last, end - match[2].length).trimEnd();
-    // Skip if ends with an abbreviation
+    const punctEnd = match.index! + match[1].length; // end of punctuation, before whitespace
+    const candidate = raw.slice(last, punctEnd).trimEnd();
     if (ABBREV.test(candidate)) continue;
-    if (candidate.length > 0) results.push(candidate.trim());
-    last = end - match[2].length + 1;
+    const text = candidate.trim();
+    if (text.length === 0) continue;
+
+    const start = raw.indexOf(text, last);
+    results.push({ text, start, end: start + text.length });
+    last = punctEnd + 1; // advance past punctuation + 1 whitespace char
   }
 
   const remainder = raw.slice(last).trim();
-  if (remainder.length > 0) results.push(remainder);
+  if (remainder.length > 0) {
+    const start = raw.indexOf(remainder, last);
+    results.push({ text: remainder, start, end: start + remainder.length });
+  }
 
   return results;
 }
@@ -57,7 +70,6 @@ function shouldSkipSentence(text: string, settings: AutoSkipSettings): boolean {
   if (text.length < 3) return true;
 
   if (settings.headers) {
-    // Short all-caps lines (likely headers)
     const trimmed = text.trim();
     if (trimmed.length < 80 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed)) {
       return true;
@@ -65,7 +77,6 @@ function shouldSkipSentence(text: string, settings: AutoSkipSettings): boolean {
   }
 
   if (settings.footers) {
-    // Page numbers: standalone digit sequences
     if (/^\d+$/.test(text.trim())) return true;
   }
 
@@ -74,7 +85,6 @@ function shouldSkipSentence(text: string, settings: AutoSkipSettings): boolean {
 
 function splitLongSentence(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
-  // Split at clause boundaries: , ; :
   const re = /([,;:])(\s+)/g;
   const parts: string[] = [];
   let last = 0;
@@ -90,29 +100,45 @@ function splitLongSentence(text: string, maxLen: number): string[] {
 }
 
 export function segmentText(rawText: string, autoSkip: AutoSkipSettings): Sentence[] {
-  const raw = splitSentences(rawText);
+  const normalized = rawText.replace(/\r\n/g, '\n');
+  const raw = splitSentences(normalized);
   const sentences: Sentence[] = [];
-  let charOffset = 0;
   let idx = 0;
 
-  for (const rawSentence of raw) {
-    const processed = applyAutoSkip(rawSentence, autoSkip);
+  for (const { text: rawSentence, start: rawStart, end: rawEnd } of raw) {
+    const ttsText = applyAutoSkip(rawSentence, autoSkip);
 
-    if (shouldSkipSentence(processed, autoSkip)) {
-      charOffset += rawSentence.length + 1;
-      continue;
+    if (shouldSkipSentence(ttsText, autoSkip)) continue;
+
+    const chunks = splitLongSentence(ttsText, 400);
+
+    if (chunks.length === 1) {
+      sentences.push({
+        index: idx++,
+        text: normalized.slice(rawStart, rawEnd),
+        ttsText: chunks[0],
+        charStart: rawStart,
+        charEnd: rawEnd,
+      });
+    } else {
+      // Distribute raw display range proportionally across TTS chunks
+      let chunkCharStart = rawStart;
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const proportion = chunks[ci].length / ttsText.length;
+        const charLen = Math.round((rawEnd - rawStart) * proportion);
+        const chunkCharEnd = ci === chunks.length - 1
+          ? rawEnd
+          : Math.min(chunkCharStart + charLen, rawEnd);
+        sentences.push({
+          index: idx++,
+          text: normalized.slice(chunkCharStart, chunkCharEnd),
+          ttsText: chunks[ci],
+          charStart: chunkCharStart,
+          charEnd: chunkCharEnd,
+        });
+        chunkCharStart = chunkCharEnd;
+      }
     }
-
-    // Split overly long sentences
-    const chunks = splitLongSentence(processed, 400);
-    for (const chunk of chunks) {
-      // Scan forward from charOffset instead of re-searching from 0
-      const idx2 = rawText.indexOf(chunk, charOffset);
-      const start = idx2 >= 0 ? idx2 : charOffset;
-      sentences.push({ index: idx++, text: chunk, charStart: start, charEnd: start + chunk.length });
-    }
-
-    charOffset += rawSentence.length + 1;
   }
 
   return sentences;
