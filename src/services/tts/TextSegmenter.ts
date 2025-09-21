@@ -106,10 +106,10 @@ export function segmentText(rawText: string, autoSkip: AutoSkipSettings): Senten
     // Split overly long sentences
     const chunks = splitLongSentence(processed, 400);
     for (const chunk of chunks) {
-      const charStart = rawText.indexOf(chunk, charOffset);
-      const start = charStart >= 0 ? charStart : charOffset;
-      const end = start + chunk.length;
-      sentences.push({ index: idx++, text: chunk, charStart: start, charEnd: end });
+      // Scan forward from charOffset instead of re-searching from 0
+      const idx2 = rawText.indexOf(chunk, charOffset);
+      const start = idx2 >= 0 ? idx2 : charOffset;
+      sentences.push({ index: idx++, text: chunk, charStart: start, charEnd: start + chunk.length });
     }
 
     charOffset += rawSentence.length + 1;
