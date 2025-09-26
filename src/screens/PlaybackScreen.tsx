@@ -62,8 +62,15 @@ const THEMES: { id: ReaderTheme; label: string; color: string; text: string }[] 
 const FONT_S_MIN = 12;
 const FONT_S_MAX = 36;
 
-// Speed steps: 0.5, 1.0, 1.5, 2.0 — snaps to 0.5 increments
-const SPEED_STEPS = [0.5, 1.0, 1.5, 2.0];
+const SPEED_MIN = 0.5;
+const SPEED_MAX = 2.0;
+
+// Clamp and round to nearest 0.05 step
+function snapSpeed(v: number, increment: number): number {
+  const steps = Math.round((v - SPEED_MIN) / increment);
+  const snapped = SPEED_MIN + steps * increment;
+  return Math.max(SPEED_MIN, Math.min(SPEED_MAX, Math.round(snapped * 100) / 100));
+}
 
 function SpeedSlider({
   value, onChange, primaryColor, borderColor, trackBg, textColor, labelColor,
@@ -77,16 +84,9 @@ function SpeedSlider({
   labelColor: string;
 }) {
   const trackWidthRef = useRef(0);
-  const stepCount = SPEED_STEPS.length - 1;
 
-  const positionFromValue = (v: number) =>
-    ((v - SPEED_STEPS[0]) / (SPEED_STEPS[stepCount] - SPEED_STEPS[0]));
-
-  const snapToStep = (pos: number): number => {
-    const stepIndex = Math.round(pos * stepCount);
-    const clamped = Math.max(0, Math.min(stepCount, stepIndex));
-    return SPEED_STEPS[clamped];
-  };
+  const fillFraction = (value - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
+  const fillPct = `${fillFraction * 100}%` as any;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -95,64 +95,79 @@ function SpeedSlider({
       onPanResponderGrant: (evt) => {
         if (trackWidthRef.current > 0) {
           const pos = Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidthRef.current));
-          onChange(snapToStep(pos));
+          onChange(snapSpeed(SPEED_MIN + pos * (SPEED_MAX - SPEED_MIN), 0.1));
         }
       },
       onPanResponderMove: (evt) => {
         if (trackWidthRef.current > 0) {
           const pos = Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidthRef.current));
-          onChange(snapToStep(pos));
+          onChange(snapSpeed(SPEED_MIN + pos * (SPEED_MAX - SPEED_MIN), 0.1));
         }
       },
     }),
   ).current;
 
-  const fillPct = `${positionFromValue(value) * 100}%` as any;
+  // Display: trim trailing zeros e.g. 1.00→"1", 1.50→"1.5", 0.75→"0.75"
+  const displayValue = parseFloat(value.toFixed(2));
 
   return (
-    <View style={{ paddingHorizontal: 8 }}>
-      <Text style={{ color: textColor, fontSize: 42, fontWeight: '800', textAlign: 'center', marginBottom: 4 }}>
-        {value}x
+    <View style={{ paddingHorizontal: 4 }}>
+      <Text style={{ color: textColor, fontSize: 48, fontWeight: '900', textAlign: 'center', letterSpacing: -1, marginBottom: 8 }}>
+        {displayValue}x
       </Text>
-      <View
-        style={{ height: 48, justifyContent: 'center' }}
-        onLayout={e => { trackWidthRef.current = e.nativeEvent.layout.width; }}
-        {...panResponder.panHandlers}
-      >
-        <View style={{ height: 6, backgroundColor: trackBg, borderRadius: 3, overflow: 'hidden' }}>
-          <View style={{ height: 6, width: fillPct, backgroundColor: primaryColor, borderRadius: 3 }} />
+
+      {/* Slider row with - and + buttons */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <TouchableOpacity
+          onPress={() => onChange(snapSpeed(value - 0.05, 0.05))}
+          disabled={value <= SPEED_MIN}
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: trackBg, borderWidth: 1, borderColor,
+            justifyContent: 'center', alignItems: 'center',
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ color: value <= SPEED_MIN ? labelColor : textColor, fontSize: 22, fontWeight: '800', lineHeight: 26 }}>−</Text>
+        </TouchableOpacity>
+
+        <View
+          style={{ flex: 1, height: 48, justifyContent: 'center' }}
+          onLayout={e => { trackWidthRef.current = e.nativeEvent.layout.width; }}
+          {...panResponder.panHandlers}
+        >
+          <View style={{ height: 6, backgroundColor: trackBg, borderRadius: 3, overflow: 'hidden' }}>
+            <View style={{ height: 6, width: fillPct, backgroundColor: primaryColor, borderRadius: 3 }} />
+          </View>
+          {/* Thumb */}
+          <View style={{
+            position: 'absolute',
+            width: 26, height: 26, borderRadius: 13,
+            backgroundColor: primaryColor,
+            left: fillPct, marginLeft: -13, top: 11,
+            shadowColor: primaryColor, shadowOpacity: 0.45, shadowRadius: 6,
+            elevation: 4,
+          }} />
         </View>
-        {/* Step dots */}
-        {SPEED_STEPS.map((step, i) => (
-          <View
-            key={step}
-            style={{
-              position: 'absolute',
-              width: 14, height: 14, borderRadius: 7,
-              backgroundColor: value >= step ? primaryColor : 'transparent',
-              borderWidth: 2, borderColor: value >= step ? primaryColor : borderColor,
-              left: `${(i / stepCount) * 100}%` as any,
-              marginLeft: -7, top: 17,
-            }}
-          />
-        ))}
-        {/* Active thumb */}
-        <View style={{
-          position: 'absolute',
-          width: 24, height: 24, borderRadius: 12,
-          backgroundColor: primaryColor,
-          left: fillPct, marginLeft: -12, top: 12,
-          shadowColor: primaryColor, shadowOpacity: 0.5, shadowRadius: 6,
-          elevation: 4,
-        }} />
+
+        <TouchableOpacity
+          onPress={() => onChange(snapSpeed(value + 0.05, 0.05))}
+          disabled={value >= SPEED_MAX}
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: trackBg, borderWidth: 1, borderColor,
+            justifyContent: 'center', alignItems: 'center',
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ color: value >= SPEED_MAX ? labelColor : textColor, fontSize: 22, fontWeight: '800', lineHeight: 26 }}>+</Text>
+        </TouchableOpacity>
       </View>
-      {/* Labels */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-        {SPEED_STEPS.map(step => (
-          <Text key={step} style={{ color: value === step ? primaryColor : labelColor, fontSize: 12, fontWeight: '700', width: 36, textAlign: 'center' }}>
-            {step}x
-          </Text>
-        ))}
+
+      {/* Range labels */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingHorizontal: 56 }}>
+        <Text style={{ color: labelColor, fontSize: 11, fontWeight: '700' }}>{SPEED_MIN}x</Text>
+        <Text style={{ color: labelColor, fontSize: 11, fontWeight: '700' }}>{SPEED_MAX}x</Text>
       </View>
     </View>
   );
@@ -728,10 +743,10 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
       </Modal>
 
       {/* ── Voice Catalog Modal ── */}
-      <Modal visible={showVoicePicker} transparent animationType="slide" onRequestClose={() => setShowVoicePicker(false)}>
-        <Pressable style={styles.overlay} onPress={() => setShowVoicePicker(false)}>
+      <Modal visible={showVoicePicker} transparent animationType="slide" onRequestClose={() => { setShowVoicePicker(false); setVoiceSearch(''); }}>
+        <Pressable style={styles.overlay} onPress={() => { setShowVoicePicker(false); setVoiceSearch(''); }}>
           <Animated.View
-            style={[styles.sheet, styles.tallSheet, { backgroundColor: theme.colors.surface, transform: [{ translateY: voiceDismiss.translateY }] }]}
+            style={[styles.sheet, styles.hugeSheet, { backgroundColor: theme.colors.surface, transform: [{ translateY: voiceDismiss.translateY }] }]}
             {...voiceDismiss.panResponder.panHandlers}
             onStartShouldSetResponder={() => true}
           >
@@ -739,6 +754,8 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
             </View>
             <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Voices</Text>
+
+            {/* Search bar */}
             <View style={[styles.voiceSearchWrap, { backgroundColor: theme.colors.darkerBg, borderColor: theme.colors.border }]}>
               <Search01Icon size={15} color={theme.colors.textSecondary} />
               <TextInput
@@ -756,44 +773,71 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                 </TouchableOpacity>
               )}
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
-              {PIPER_MODELS
-                .filter(m => {
-                  const q = voiceSearch.toLowerCase();
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
+              {(() => {
+                const q = voiceSearch.toLowerCase();
+                const filtered = PIPER_MODELS.filter(m => {
                   if (!q) return true;
-                  const regionCode = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
+                  const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
                   return (
                     m.voiceLabel.toLowerCase().includes(q) ||
                     m.label.toLowerCase().includes(q) ||
                     m.langCode.toLowerCase().includes(q) ||
-                    regionCode.toLowerCase().includes(q)
+                    region.toLowerCase().includes(q)
                   );
-                })
-                .map(m => {
-                  const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
-                  const regionCode = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
-                  const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
-                  return (
-                    <TouchableOpacity
-                      key={m.voiceDirName}
-                      style={[styles.voiceOption, { backgroundColor: theme.colors.darkerBg }, isDownloaded && { borderLeftWidth: 3, borderLeftColor: theme.colors.primary }]}
-                      onPress={() => { setVoice(m); setShowVoicePicker(false); }}
-                      activeOpacity={0.75}
-                    >
-                      <View style={[styles.voiceAvatar, { backgroundColor: isDownloaded ? theme.colors.primary + '18' : theme.colors.surface, borderColor: isDownloaded ? theme.colors.primary : theme.colors.border }]}>
-                        <VoiceIcon size={20} color={isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{voiceName}</Text>
-                        <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
-                          {m.label}{regionCode ? ` · ${regionCode}` : ''}
-                          {isDownloaded ? '  ✓ Downloaded' : ''}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-              }
+                });
+
+                // Group by language label, preserve order of first occurrence
+                const langOrder: string[] = [];
+                const groups: Record<string, typeof PIPER_MODELS> = {};
+                for (const m of filtered) {
+                  if (!groups[m.label]) { groups[m.label] = []; langOrder.push(m.label); }
+                  groups[m.label].push(m);
+                }
+
+                return langOrder.map(lang => (
+                  <View key={lang} style={{ marginBottom: 20 }}>
+                    <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary, marginBottom: 8 }]}>{lang.toUpperCase()}</Text>
+                    <View style={[styles.settingsCard, { marginBottom: 0 }]}>
+                      {groups[lang].map((m, idx) => {
+                        const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
+                        const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
+                        const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
+                        const isLast = idx === groups[lang].length - 1;
+                        return (
+                          <TouchableOpacity
+                            key={m.voiceDirName}
+                            style={[
+                              styles.voiceCatalogRow,
+                              !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                            ]}
+                            onPress={() => { setVoice(m); setShowVoicePicker(false); setVoiceSearch(''); }}
+                            activeOpacity={0.7}
+                          >
+                            <View style={[
+                              styles.voiceAvatar,
+                              { backgroundColor: isDownloaded ? theme.colors.primary + '20' : theme.colors.surface, borderColor: isDownloaded ? theme.colors.primary : theme.colors.border },
+                            ]}>
+                              <VoiceIcon size={18} color={isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{voiceName}</Text>
+                              <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
+                                {region || m.langCode.toUpperCase()}
+                                {isDownloaded && <Text style={{ color: theme.colors.primary }}> · Downloaded</Text>}
+                              </Text>
+                            </View>
+                            {isDownloaded && (
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary }} />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ));
+              })()}
             </ScrollView>
           </Animated.View>
         </Pressable>
@@ -976,6 +1020,7 @@ function makeStyles(theme: Theme) {
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
     sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingTop: 0, paddingBottom: 40 },
     tallSheet: { maxHeight: '75%' },
+    hugeSheet: { maxHeight: '92%' },
     handleWrap: { paddingTop: 14, paddingBottom: 8, alignItems: 'center' },
     handle: { width: 40, height: 4, borderRadius: 2 },
     sheetTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 20 },
@@ -1022,6 +1067,7 @@ function makeStyles(theme: Theme) {
     fontLabel: { fontSize: 11, fontWeight: '700' },
 
     voiceOption: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: 14, marginBottom: 8 },
+    voiceCatalogRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
     voiceName: { fontSize: 15, fontWeight: '700' },
     voiceSub: { fontSize: 12 },
     voiceSearchWrap: {

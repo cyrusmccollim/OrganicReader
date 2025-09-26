@@ -8,37 +8,73 @@ export interface Sentence {
   charEnd: number;
 }
 
+// Abbreviations we do NOT want to split on
+const ABBREV = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|[A-Z])\.\s*$/;
+
 interface RawSentence {
   text: string;
   start: number;
   end: number;
 }
 
-// Abbreviations we do NOT want to split on
-const ABBREV = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|[A-Z])\.\s*$/;
-
-function splitSentences(raw: string): RawSentence[] {
-  // Split on sentence-ending punctuation followed by whitespace + capital letter (or end)
+/**
+ * Split a single paragraph of text into sentences, tracking absolute positions
+ * within the full normalized rawText (via globalStart offset).
+ */
+function splitParagraph(text: string, globalStart: number): RawSentence[] {
   const re = /([.!?]+)(\s+)(?=[A-Z"'])/g;
   const results: RawSentence[] = [];
   let last = 0;
 
-  for (const match of raw.matchAll(re)) {
-    const punctEnd = match.index! + match[1].length; // end of punctuation, before whitespace
-    const candidate = raw.slice(last, punctEnd).trimEnd();
+  for (const match of text.matchAll(re)) {
+    const punctEnd = match.index! + match[1].length;
+    const candidate = text.slice(last, punctEnd).trimEnd();
     if (ABBREV.test(candidate)) continue;
-    const text = candidate.trim();
-    if (text.length === 0) continue;
-
-    const start = raw.indexOf(text, last);
-    results.push({ text, start, end: start + text.length });
-    last = punctEnd + 1; // advance past punctuation + 1 whitespace char
+    const t = candidate.trim();
+    if (!t) continue;
+    const localStart = text.indexOf(t, last);
+    results.push({
+      text: t,
+      start: globalStart + localStart,
+      end: globalStart + localStart + t.length,
+    });
+    last = punctEnd + 1;
   }
 
-  const remainder = raw.slice(last).trim();
-  if (remainder.length > 0) {
-    const start = raw.indexOf(remainder, last);
-    results.push({ text: remainder, start, end: start + remainder.length });
+  const remainder = text.slice(last).trim();
+  if (remainder) {
+    const localStart = text.indexOf(remainder, last);
+    results.push({
+      text: remainder,
+      start: globalStart + localStart,
+      end: globalStart + localStart + remainder.length,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Split the full normalized text into sentences.
+ * Paragraph breaks (2+ consecutive newlines) act as hard boundaries so
+ * sentences never span across paragraphs.
+ */
+function splitSentences(normalized: string): RawSentence[] {
+  const results: RawSentence[] = [];
+  const paraBreakRe = /\n{2,}/g;
+  let segStart = 0;
+
+  for (const m of normalized.matchAll(paraBreakRe)) {
+    const paraText = normalized.slice(segStart, m.index!);
+    if (paraText.trim()) {
+      results.push(...splitParagraph(paraText, segStart));
+    }
+    segStart = m.index! + m[0].length;
+  }
+
+  const remaining = normalized.slice(segStart);
+  if (remaining.trim()) {
+    results.push(...splitParagraph(remaining, segStart));
   }
 
   return results;
@@ -47,8 +83,8 @@ function splitSentences(raw: string): RawSentence[] {
 function applyAutoSkip(text: string, settings: AutoSkipSettings): string {
   let t = text;
   if (settings.citations) {
-    t = t.replace(/\[\d+(?:,\s*\d+)*\]/g, '');          // [1], [1,2]
-    t = t.replace(/\([\w\s,&.]+\d{4}[a-z]?\)/g, '');    // (Author 2023)
+    t = t.replace(/\[\d+(?:,\s*\d+)*\]/g, '');
+    t = t.replace(/\([\w\s,&.]+\d{4}[a-z]?\)/g, '');
   }
   if (settings.urls) {
     t = t.replace(/https?:\/\/\S+/g, '');
@@ -100,7 +136,8 @@ function splitLongSentence(text: string, maxLen: number): string[] {
 }
 
 export function segmentText(rawText: string, autoSkip: AutoSkipSettings): Sentence[] {
-  const normalized = rawText.replace(/\r\n/g, '\n');
+  // Normalize line endings so positions in sentences match positions in TxtViewer content
+  const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const raw = splitSentences(normalized);
   const sentences: Sentence[] = [];
   let idx = 0;
@@ -121,7 +158,6 @@ export function segmentText(rawText: string, autoSkip: AutoSkipSettings): Senten
         charEnd: rawEnd,
       });
     } else {
-      // Distribute raw display range proportionally across TTS chunks
       let chunkCharStart = rawStart;
       for (let ci = 0; ci < chunks.length; ci++) {
         const proportion = chunks[ci].length / ttsText.length;
