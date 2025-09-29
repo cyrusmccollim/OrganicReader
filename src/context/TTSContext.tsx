@@ -30,6 +30,7 @@ interface TTSContextType {
   activeWordIndex: number;
   progressFraction: number;
   downloadedModels: PiperModelEntry[];
+  activeModelEntry: PiperModelEntry | null;
   initTTS: (rawText: string) => void;
   play: () => Promise<void>;
   pause: () => Promise<void>;
@@ -56,6 +57,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const [activeWordIndex, setActiveWordIndex] = useState(0);
   const [progressFraction, setProgressFraction] = useState(0);
   const [downloadedModels, setDownloadedModels] = useState<PiperModelEntry[]>([]);
+  const [activeModelEntry, setActiveModelEntry] = useState<PiperModelEntry | null>(null);
 
   const rawTextRef = useRef<string>('');
   const overrideEntryRef = useRef<PiperModelEntry | null>(null);
@@ -174,6 +176,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
         if (!alreadyDownloaded) setDownloadProgress(f);
       });
       sampleRateRef.current = model.entry.sampleRate;
+      setActiveModelEntry(model.entry);
       await refreshDownloadedModels();
     } catch (err) {
       console.warn('TTS model init failed:', err);
@@ -296,7 +299,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     <TTSContext.Provider value={{
       ttsState, downloadProgress, downloadLanguage,
       sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
-      progressFraction, downloadedModels,
+      progressFraction, downloadedModels, activeModelEntry,
       initTTS: (text) => initTTSRef.current(text),
       play, pause, stop, seekToFraction, seekToSentence, jumpSeconds,
       setSpeed, setVoice, deleteDownloadedModel,

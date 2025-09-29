@@ -32,7 +32,9 @@ function escapeRegex(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const TxtViewer = forwardRef<ViewerHandle, Props>(({
+type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
+
+const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   uri, text: textProp, refreshKey,
   onSearchResult, onViewerMessage,
   ttsMode, sentences, activeSentenceIndex, activeWordIndex, onSentenceTap,
@@ -119,19 +121,10 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
     clearSearch: () => { setActiveSearch(''); setSearchCurrent(0); },
   }), [matchPositions]);
 
-  const renderTTSContent = useCallback(() => {
-    if (!sentences || sentences.length === 0 || !content) return null;
-
-    const textStyle = [
-      styles.text,
-      { fontSize, lineHeight: fontSize * 1.65, color: readerTheme.text },
-      fontFamily ? { fontFamily } : null,
-    ];
-
-    // Strategy: split full content on paragraph breaks (\n\n or \n).
-    // For each line, determine which sentence(s) it contains and render
-    // those sentences inline. This preserves newline structure since each
-    // line is its own <Text> block inside a <View>.
+  // Pre-compute TTS lines — only recomputes when content or sentences change,
+  // not on every word highlight tick.
+  const ttsLines = useMemo((): InlineNode[][] => {
+    if (!sentences || sentences.length === 0 || !content) return [];
 
     // Build a flat array of "runs": either a sentence ref or a literal string.
     type Run = { type: 'sent'; si: number } | { type: 'text'; str: string };
@@ -150,11 +143,9 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       runs.push({ type: 'text', str: content.slice(cursor) });
     }
 
-    // Now split runs on newlines, producing an array of lines where each
+    // Split runs on newlines, producing an array of lines where each
     // line is an array of inline nodes. Splitting a text run on \n produces
     // multiple lines; sentence runs stay on a single line (never split mid-sentence).
-    // Normalize \r\n to \n so Windows-format content doesn't produce stray \r characters.
-    type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
     const lines: InlineNode[][] = [[]];
 
     for (const run of runs) {
@@ -171,9 +162,21 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       }
     }
 
+    return lines;
+  }, [content, sentences]);
+
+  const renderTTSContent = useCallback(() => {
+    if (ttsLines.length === 0) return null;
+
+    const textStyle = [
+      styles.text,
+      { fontSize, lineHeight: fontSize * 1.65, color: readerTheme.text },
+      fontFamily ? { fontFamily } : null,
+    ];
+
     return (
       <View>
-        {lines.map((line, li) => {
+        {ttsLines.map((line, li) => {
           if (line.length === 0) {
             return <View key={`line-${li}`} style={{ height: fontSize * 0.8 }} />;
           }
@@ -200,7 +203,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
                     return <Text key={`lit-${li}-${ni}`}>{node.text}</Text>;
                   }
                   const si = node.si;
-                  const sent = sentences[si];
+                  const sent = sentences![si];
                   const isActive = si === activeSentenceIndex;
                   // Normalize any residual newlines to spaces for inline rendering
                   const displayText = sent.text.replace(/\n/g, ' ');
@@ -240,7 +243,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
         })}
       </View>
     );
-  }, [sentences, content, activeSentenceIndex, activeWordIndex, onSentenceTap, styles, fontSize, readerTheme, fontFamily]);
+  }, [ttsLines, activeSentenceIndex, activeWordIndex, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily]);
 
   const renderSearchContent = useCallback(() => {
     if (!content) return null;
@@ -309,6 +312,8 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
     </ScrollView>
   );
 });
+
+export const TxtViewer = React.memo(TxtViewerInner);
 
 function makeStyles(_theme: Theme) {
   return StyleSheet.create({

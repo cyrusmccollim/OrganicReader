@@ -22,7 +22,7 @@ import { DocumentViewer } from '../components/DocumentViewer';
 import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
 import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES } from '../context/PlaybackContext';
-import { PIPER_MODELS } from '../config/ttsModels';
+import { PIPER_MODELS, getLanguageLabels } from '../config/ttsModels';
 import { useTTS } from '../context/TTSContext';
 import { useTextFileCreator } from '../hooks/useTextFileCreator';
 import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
@@ -43,6 +43,7 @@ import {
   Cancel01Icon,
   ArrowUp01Icon,
   Edit02Icon,
+  Tick01Icon,
 } from 'hugeicons-react-native';
 
 interface Props {
@@ -65,6 +66,10 @@ const FONT_S_MAX = 36;
 const SPEED_MIN = 0.5;
 const SPEED_MAX = 2.0;
 
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 // Clamp and round to nearest 0.05 step
 function snapSpeed(v: number, increment: number): number {
   const steps = Math.round((v - SPEED_MIN) / increment);
@@ -83,7 +88,9 @@ function SpeedSlider({
   textColor: string;
   labelColor: string;
 }) {
+  const trackViewRef = useRef<View>(null);
   const trackWidthRef = useRef(0);
+  const trackPageXRef = useRef(0);
 
   const fillFraction = (value - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
   const fillPct = `${fillFraction * 100}%` as any;
@@ -93,14 +100,16 @@ function SpeedSlider({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
-        if (trackWidthRef.current > 0) {
-          const pos = Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidthRef.current));
+        trackViewRef.current?.measure((_fx, _fy, w, _fh, pageX) => {
+          trackPageXRef.current = pageX;
+          trackWidthRef.current = w;
+          const pos = clamp((evt.nativeEvent.pageX - pageX) / w, 0, 1);
           onChange(snapSpeed(SPEED_MIN + pos * (SPEED_MAX - SPEED_MIN), 0.1));
-        }
+        });
       },
       onPanResponderMove: (evt) => {
         if (trackWidthRef.current > 0) {
-          const pos = Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidthRef.current));
+          const pos = clamp((evt.nativeEvent.pageX - trackPageXRef.current) / trackWidthRef.current, 0, 1);
           onChange(snapSpeed(SPEED_MIN + pos * (SPEED_MAX - SPEED_MIN), 0.1));
         }
       },
@@ -132,8 +141,8 @@ function SpeedSlider({
         </TouchableOpacity>
 
         <View
+          ref={trackViewRef}
           style={{ flex: 1, height: 48, justifyContent: 'center' }}
-          onLayout={e => { trackWidthRef.current = e.nativeEvent.layout.width; }}
           {...panResponder.panHandlers}
         >
           <View style={{ height: 6, backgroundColor: trackBg, borderRadius: 3, overflow: 'hidden' }}>
@@ -202,6 +211,8 @@ function totalDurationMs(sentenceTimings: { endMs: number }[]): number {
   return sentenceTimings[sentenceTimings.length - 1].endMs;
 }
 
+const LANGUAGE_LABELS = getLanguageLabels();
+
 export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -213,7 +224,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const {
     ttsState, downloadProgress, downloadLanguage,
     sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
-    progressFraction, downloadedModels,
+    progressFraction, downloadedModels, activeModelEntry,
     initTTS, play, pause, stop, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice,
   } = useTTS();
   const { createTextFile } = useTextFileCreator();
@@ -305,9 +316,15 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const [showAutoSkip, setShowAutoSkip] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [voiceSearch, setVoiceSearch] = useState('');
+  const [selectedLangTab, setSelectedLangTab] = useState('All');
   const [bookmarkFlash, setBookmarkFlash] = useState(false);
   const bookmarkFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (bookmarkFlashTimer.current) clearTimeout(bookmarkFlashTimer.current); }, []);
+
+  // Auto-select language tab when voice picker opens
+  useEffect(() => {
+    if (showVoicePicker) setSelectedLangTab(activeModelEntry?.label ?? 'All');
+  }, [showVoicePicker, activeModelEntry?.label]);
 
   const moreDismiss       = useSwipeToDismiss(() => setShowMore(false));
   const autoSkipDismiss   = useSwipeToDismiss(() => setShowAutoSkip(false));
@@ -425,6 +442,23 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   };
 
   const ttsActive = ttsState !== 'idle' && ttsState !== 'error' && sentences.length > 0;
+
+  // Filtered voices for voice catalog
+  const filteredVoices = useMemo(() => {
+    const q = voiceSearch.toLowerCase();
+    return PIPER_MODELS.filter(m => {
+      const langMatch = selectedLangTab === 'All' || m.label === selectedLangTab;
+      if (!langMatch) return false;
+      if (!q) return true;
+      const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
+      return (
+        m.voiceLabel.toLowerCase().includes(q) ||
+        m.label.toLowerCase().includes(q) ||
+        m.langCode.toLowerCase().includes(q) ||
+        region.toLowerCase().includes(q)
+      );
+    });
+  }, [voiceSearch, selectedLangTab]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.darkBg }]}>
@@ -747,10 +781,10 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
         <Pressable style={styles.overlay} onPress={() => { setShowVoicePicker(false); setVoiceSearch(''); }}>
           <Animated.View
             style={[styles.sheet, styles.hugeSheet, { backgroundColor: theme.colors.surface, transform: [{ translateY: voiceDismiss.translateY }] }]}
-            {...voiceDismiss.panResponder.panHandlers}
             onStartShouldSetResponder={() => true}
           >
-            <View style={styles.handleWrap}>
+            {/* Handle responds to swipe-to-dismiss; content scrolls freely */}
+            <View style={styles.handleWrap} {...voiceDismiss.panResponder.panHandlers}>
               <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
             </View>
             <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Voices</Text>
@@ -774,70 +808,110 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               )}
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
-              {(() => {
-                const q = voiceSearch.toLowerCase();
-                const filtered = PIPER_MODELS.filter(m => {
-                  if (!q) return true;
-                  const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
-                  return (
-                    m.voiceLabel.toLowerCase().includes(q) ||
-                    m.label.toLowerCase().includes(q) ||
-                    m.langCode.toLowerCase().includes(q) ||
-                    region.toLowerCase().includes(q)
-                  );
-                });
+            {/* Language tab bar */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.langTabBar}
+              contentContainerStyle={styles.langTabBarContent}
+            >
+              {['All', ...LANGUAGE_LABELS].map(lang => {
+                const isActive = selectedLangTab === lang;
+                return (
+                  <TouchableOpacity
+                    key={lang}
+                    onPress={() => setSelectedLangTab(lang)}
+                    style={[
+                      styles.langTab,
+                      { borderColor: theme.colors.border, backgroundColor: theme.colors.darkerBg },
+                      isActive && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '22' },
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.langTabText,
+                      { color: theme.colors.textSecondary },
+                      isActive && { color: theme.colors.primary, fontWeight: '700' },
+                    ]}>
+                      {lang}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
-                // Group by language label, preserve order of first occurrence
-                const langOrder: string[] = [];
-                const groups: Record<string, typeof PIPER_MODELS> = {};
-                for (const m of filtered) {
-                  if (!groups[m.label]) { groups[m.label] = []; langOrder.push(m.label); }
-                  groups[m.label].push(m);
-                }
-
-                return langOrder.map(lang => (
-                  <View key={lang} style={{ marginBottom: 20 }}>
-                    <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary, marginBottom: 8 }]}>{lang.toUpperCase()}</Text>
-                    <View style={[styles.settingsCard, { marginBottom: 0 }]}>
-                      {groups[lang].map((m, idx) => {
-                        const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
-                        const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
-                        const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
-                        const isLast = idx === groups[lang].length - 1;
-                        return (
-                          <TouchableOpacity
-                            key={m.voiceDirName}
-                            style={[
-                              styles.voiceCatalogRow,
-                              !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-                            ]}
-                            onPress={() => { setVoice(m); setShowVoicePicker(false); setVoiceSearch(''); }}
-                            activeOpacity={0.7}
-                          >
-                            <View style={[
-                              styles.voiceAvatar,
-                              { backgroundColor: isDownloaded ? theme.colors.primary + '20' : theme.colors.surface, borderColor: isDownloaded ? theme.colors.primary : theme.colors.border },
-                            ]}>
-                              <VoiceIcon size={18} color={isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{voiceName}</Text>
-                              <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
-                                {region || m.langCode.toUpperCase()}
-                                {isDownloaded && <Text style={{ color: theme.colors.primary }}> · Downloaded</Text>}
-                              </Text>
-                            </View>
-                            {isDownloaded && (
-                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary }} />
+            {/* Voice list */}
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
+              {filteredVoices.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <VoiceIcon size={36} color={theme.colors.textSecondary} />
+                  <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>No voices found</Text>
+                </View>
+              ) : (
+                <View style={[styles.settingsCard, { marginBottom: 24 }]}>
+                  {filteredVoices.map((m, idx) => {
+                    const isSelected = m.voiceDirName === activeModelEntry?.voiceDirName;
+                    const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
+                    const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
+                    const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
+                    const isLast = idx === filteredVoices.length - 1;
+                    return (
+                      <TouchableOpacity
+                        key={m.voiceDirName}
+                        style={[
+                          styles.voiceCatalogRow,
+                          !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                          isSelected && { backgroundColor: theme.colors.primary + '18' },
+                        ]}
+                        onPress={() => { setVoice(m); setShowVoicePicker(false); setVoiceSearch(''); }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[
+                          styles.voiceAvatar,
+                          {
+                            backgroundColor: isSelected
+                              ? theme.colors.primary + '30'
+                              : isDownloaded
+                              ? theme.colors.primary + '16'
+                              : theme.colors.surface,
+                            borderColor: isSelected
+                              ? theme.colors.primary
+                              : isDownloaded
+                              ? theme.colors.primary + '60'
+                              : theme.colors.border,
+                          },
+                        ]}>
+                          <VoiceIcon size={18} color={isSelected || isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[
+                            styles.voiceName,
+                            { color: isSelected ? theme.colors.primary : theme.colors.textPrimary },
+                            isSelected && { fontWeight: '800' },
+                          ]}>
+                            {voiceName}
+                          </Text>
+                          <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
+                            {selectedLangTab === 'All' ? `${m.label} · ` : ''}
+                            {region || m.langCode.toUpperCase()}
+                            {isDownloaded && !isSelected && (
+                              <Text style={{ color: theme.colors.primary + 'AA' }}> · Downloaded</Text>
                             )}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ));
-              })()}
+                            {isSelected && (
+                              <Text style={{ color: theme.colors.primary }}> · Playing</Text>
+                            )}
+                          </Text>
+                        </View>
+                        {isSelected ? (
+                          <Tick01Icon size={18} color={theme.colors.primary} />
+                        ) : isDownloaded ? (
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary + '80' }} />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </ScrollView>
           </Animated.View>
         </Pressable>
@@ -1073,9 +1147,16 @@ function makeStyles(theme: Theme) {
     voiceSearchWrap: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
       borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10,
-      marginBottom: 4,
+      marginBottom: 8,
     },
     voiceSearchInput: { flex: 1, fontSize: 14, padding: 0 },
+    langTabBar: { flexGrow: 0, marginBottom: 4 },
+    langTabBarContent: { gap: 8, paddingVertical: 4 },
+    langTab: {
+      paddingHorizontal: 14, paddingVertical: 7,
+      borderRadius: 20, borderWidth: 1,
+    },
+    langTabText: { fontSize: 13, fontWeight: '600' },
   });
 }
 
