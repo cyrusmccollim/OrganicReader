@@ -49,17 +49,17 @@ export const PIPER_MODELS: PiperModelEntry[] = [
   entry('en', 'en', 'English', 'Ryan (US)',           'en_US-ryan-medium',              'en_US-ryan-medium.onnx',              64_000_000, 22050),
   entry('en', 'en', 'English', 'Lessac (US)',         'en_US-lessac-medium',            'en_US-lessac-medium.onnx',            64_000_000, 22050),
   entry('en', 'en', 'English', 'Joe (US)',             'en_US-joe-medium',               'en_US-joe-medium.onnx',               64_000_000, 22050),
-  entry('en', 'en', 'English', 'Piper (US)',        'en_US-hfc_female-medium',        'en_US-hfc_female-medium.onnx',        64_000_000, 22050),
-  entry('en', 'en', 'English', 'Arctic (US)',         'en_US-arctic-medium',            'en_US-arctic-medium.onnx',            63_000_000, 22050),
+  entry('en', 'en', 'English', 'Clara (US)',          'en_US-hfc_female-medium',        'en_US-hfc_female-medium.onnx',        64_000_000, 22050),
+  entry('en', 'en', 'English', 'James (US)',          'en_US-arctic-medium',            'en_US-arctic-medium.onnx',            63_000_000, 22050),
   entry('en', 'en', 'English', 'Alan (UK)',            'en_GB-alan-medium',              'en_GB-alan-medium.onnx',              64_000_000, 22050),
   entry('en', 'en', 'English', 'Alba (UK)',            'en_GB-alba-medium',              'en_GB-alba-medium.onnx',              64_000_000, 22050),
   entry('en', 'en', 'English', 'Jenny Dioco (UK)',    'en_GB-jenny_dioco-medium',       'en_GB-jenny_dioco-medium.onnx',       63_000_000, 22050),
-  entry('en', 'en', 'English', 'Northern Male (UK)',  'en_GB-northern_english_male-medium', 'en_GB-northern_english_male-medium.onnx', 63_000_000, 22050),
+  entry('en', 'en', 'English', 'Owen (UK)',           'en_GB-northern_english_male-medium', 'en_GB-northern_english_male-medium.onnx', 63_000_000, 22050),
   entry('en', 'en', 'English', 'Cori (UK)',           'en_GB-cori-medium',              'en_GB-cori-medium.onnx',              63_000_000, 22050),
 
   // ── French ───────────────────────────────────────────────────────────────
-  entry('fr', 'fr', 'French', 'Siwis',      'fr_FR-siwis-medium', 'fr_FR-siwis-medium.onnx', 64_000_000, 22050),
-  entry('fr', 'fr', 'French', 'UPMC',       'fr_FR-upmc-medium',  'fr_FR-upmc-medium.onnx',  64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Sophie',     'fr_FR-siwis-medium', 'fr_FR-siwis-medium.onnx', 64_000_000, 22050),
+  entry('fr', 'fr', 'French', 'Laurent',    'fr_FR-upmc-medium',  'fr_FR-upmc-medium.onnx',  64_000_000, 22050),
   entry('fr', 'fr', 'French', 'Tom',        'fr_FR-tom-medium',   'fr_FR-tom-medium.onnx',   64_000_000, 22050),
   entry('fr', 'fr', 'French', 'Miro',       'fr_FR-miro-high',    'fr_FR-miro-high.onnx',    85_000_000, 22050),
   entry('fr', 'fr', 'French', 'Gilles (FR)','fr_FR-gilles-low',   'fr_FR-gilles-low.onnx',   16_000_000, 16000),
@@ -74,8 +74,8 @@ export const PIPER_MODELS: PiperModelEntry[] = [
   // ── Spanish ──────────────────────────────────────────────────────────────
   entry('es', 'es', 'Spanish', 'Dave (ES)',     'es_ES-davefx-medium',   'es_ES-davefx-medium.onnx',   64_000_000, 22050),
   entry('es', 'es', 'Spanish', 'Sharvard (ES)', 'es_ES-sharvard-medium', 'es_ES-sharvard-medium.onnx', 64_000_000, 22050),
-  entry('es', 'es', 'Spanish', 'Ald (MX)',      'es_MX-ald-medium',      'es_MX-ald-medium.onnx',      64_000_000, 22050),
-  entry('es', 'es', 'Spanish', 'Carlfm (ES)',   'es_ES-carlfm-x_low',    'es_ES-carlfm-x_low.onnx',    5_000_000,  16000),
+  entry('es', 'es', 'Spanish', 'Alejandro (MX)','es_MX-ald-medium',      'es_MX-ald-medium.onnx',      64_000_000, 22050),
+  entry('es', 'es', 'Spanish', 'Carlos (ES)',   'es_ES-carlfm-x_low',    'es_ES-carlfm-x_low.onnx',    5_000_000,  16000),
 
   // ── Italian ──────────────────────────────────────────────────────────────
   entry('it', 'it', 'Italian', 'Paola',        'it_IT-paola-medium', 'it_IT-paola-medium.onnx', 64_000_000, 22050),
@@ -104,16 +104,16 @@ export const PIPER_MODELS: PiperModelEntry[] = [
   entry('hi', 'hi', 'Hindi', 'Rohan',   'hi_IN-rohan-medium',   'hi_IN-rohan-medium.onnx',   64_000_000, 22050),
 
   // ── Dutch ─────────────────────────────────────────────────────────────────
-  entry('nl', 'nl', 'Dutch', 'MLS (NL)', 'nl_NL-mls-medium',  'nl_NL-mls-medium.onnx',  63_000_000, 22050),
-  entry('nl', 'nl', 'Dutch', 'Rdh (BE)', 'nl_BE-rdh-medium',  'nl_BE-rdh-medium.onnx',  63_000_000, 22050),
+  entry('nl', 'nl', 'Dutch', 'Femke (NL)', 'nl_NL-mls-medium',  'nl_NL-mls-medium.onnx',  63_000_000, 22050),
+  entry('nl', 'nl', 'Dutch', 'Lotte (BE)', 'nl_BE-rdh-medium',  'nl_BE-rdh-medium.onnx',  63_000_000, 22050),
 
   // ── Polish ────────────────────────────────────────────────────────────────
-  entry('pl', 'pl', 'Polish', 'Darkman (PL)', 'pl_PL-darkman-medium', 'pl_PL-darkman-medium.onnx', 63_000_000, 22050),
+  entry('pl', 'pl', 'Polish', 'Marek (PL)',   'pl_PL-darkman-medium', 'pl_PL-darkman-medium.onnx', 63_000_000, 22050),
   entry('pl', 'pl', 'Polish', 'Gosia (PL)',   'pl_PL-gosia-medium',   'pl_PL-gosia-medium.onnx',   63_000_000, 22050),
 
   // ── Ukrainian ────────────────────────────────────────────────────────────
   entry('uk', 'uk', 'Ukrainian', 'Lada (UA)',           'uk_UA-lada-x_low',            'uk_UA-lada-x_low.onnx',            5_000_000,  16000),
-  entry('uk', 'uk', 'Ukrainian', 'Ukrainian TTS (UA)', 'uk_UA-ukrainian_tts-medium',  'uk_UA-ukrainian_tts-medium.onnx',  63_000_000, 22050),
+  entry('uk', 'uk', 'Ukrainian', 'Olena (UA)',         'uk_UA-ukrainian_tts-medium',  'uk_UA-ukrainian_tts-medium.onnx',  63_000_000, 22050),
 
   // ── Czech ─────────────────────────────────────────────────────────────────
   entry('cs', 'cs', 'Czech', 'Jirka (CZ)', 'cs_CZ-jirka-medium', 'cs_CZ-jirka-medium.onnx', 63_000_000, 22050),
@@ -136,10 +136,10 @@ export const PIPER_MODELS: PiperModelEntry[] = [
   entry('sv', 'sv', 'Swedish', 'Lars (SE)', 'sv_SE-nst-medium', 'sv_SE-nst-medium.onnx', 63_000_000, 22050),
 
   // ── Norwegian ────────────────────────────────────────────────────────────
-  entry('no', 'no', 'Norwegian', 'Talesyntese (NO)', 'no_NO-talesyntese-medium', 'no_NO-talesyntese-medium.onnx', 63_000_000, 22050),
+  entry('no', 'no', 'Norwegian', 'Erik (NO)',        'no_NO-talesyntese-medium', 'no_NO-talesyntese-medium.onnx', 63_000_000, 22050),
 
   // ── Turkish ──────────────────────────────────────────────────────────────
-  entry('tr', 'tr', 'Turkish', 'DFKI (TR)', 'tr_TR-dfki-medium', 'tr_TR-dfki-medium.onnx', 63_000_000, 22050),
+  entry('tr', 'tr', 'Turkish', 'Emre (TR)', 'tr_TR-dfki-medium', 'tr_TR-dfki-medium.onnx', 63_000_000, 22050),
 
   // ── Catalan ──────────────────────────────────────────────────────────────
   entry('ca', 'ca', 'Catalan', 'Pau (ES)', 'ca_ES-upc_pau-x_low', 'ca_ES-upc_pau-x_low.onnx', 5_000_000, 16000),
@@ -149,10 +149,10 @@ export const PIPER_MODELS: PiperModelEntry[] = [
   entry('ka', 'ka', 'Georgian', 'Natia (GE)', 'ka_GE-natia-medium', 'ka_GE-natia-medium.onnx', 63_000_000, 22050),
 
   // ── Vietnamese ───────────────────────────────────────────────────────────
-  entry('vi', 'vi', 'Vietnamese', 'Vivos (VN)', 'vi_VN-vivos-x_low', 'vi_VN-vivos-x_low.onnx', 5_000_000, 16000),
+  entry('vi', 'vi', 'Vietnamese', 'Linh (VN)',  'vi_VN-vivos-x_low', 'vi_VN-vivos-x_low.onnx', 5_000_000, 16000),
 
   // ── Nepali ───────────────────────────────────────────────────────────────
-  entry('ne', 'ne', 'Nepali', 'Google (NP)', 'ne_NP-google-medium', 'ne_NP-google-medium.onnx', 63_000_000, 22050),
+  entry('ne', 'ne', 'Nepali', 'Sita (NP)',   'ne_NP-google-medium', 'ne_NP-google-medium.onnx', 63_000_000, 22050),
 ];
 
 export function findModel(langCode: string): PiperModelEntry {
