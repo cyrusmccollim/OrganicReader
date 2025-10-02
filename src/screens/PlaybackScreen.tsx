@@ -10,6 +10,7 @@ import {
   TextInput,
   PanResponder,
   Animated,
+  Easing,
   Pressable,
   ActivityIndicator,
 } from 'react-native';
@@ -206,10 +207,6 @@ function formatTime(ms: number) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-function totalDurationMs(sentenceTimings: { endMs: number }[]): number {
-  if (sentenceTimings.length === 0) return 0;
-  return sentenceTimings[sentenceTimings.length - 1].endMs;
-}
 
 const LANGUAGE_LABELS = getLanguageLabels();
 
@@ -223,8 +220,9 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   } = usePlayback();
   const {
     ttsState, downloadProgress, downloadLanguage,
-    sentences, sentenceTimings, activeSentenceIndex, activeWordIndex,
-    progressFraction, downloadedModels, activeModelEntry,
+    sentences, activeSentenceIndex, activeSentenceTiming,
+    progressFraction, totalEstimatedMs, totalChars,
+    downloadedModels, activeModelEntry,
     initTTS, play, pause, stop, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice,
   } = useTTS();
   const { createTextFile } = useTextFileCreator();
@@ -265,44 +263,33 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     return () => { stop(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync reading progress with TTS position
+  // Sync reading progress fraction (for library persistence)
   useEffect(() => {
-    setProgress(progressFraction > 0 ? progressFraction : file.progress);
-  }, [progressFraction, file.progress]);
+    if (progressFraction > 0) setProgress(progressFraction);
+  }, [progressFraction]);
 
-  // Scrub bar drag handler
+  // Scrub bar drag — drives progressAnim directly (no React state = no re-renders during drag).
   const scrubAwarePR = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
-        const { pageX } = evt.nativeEvent;
-        const w = trackLayoutRef.current.width;
-        const x0 = trackLayoutRef.current.x;
-        if (w > 0) {
-          const p = Math.max(0, Math.min(1, (pageX - x0) / w));
-          setProgress(p);
-        }
+        sentAnimRef.current?.stop(); // pause smooth animation during manual drag
+        const p = Math.max(0, Math.min(1, (evt.nativeEvent.pageX - trackLayoutRef.current.x) / trackLayoutRef.current.width));
+        progressAnim.setValue(p);
+        setProgress(p);
       },
       onPanResponderMove: (evt) => {
-        const { pageX } = evt.nativeEvent;
-        const w = trackLayoutRef.current.width;
-        const x0 = trackLayoutRef.current.x;
-        if (w > 0) {
-          const p = Math.max(0, Math.min(1, (pageX - x0) / w));
-          setProgress(p);
-        }
+        const p = Math.max(0, Math.min(1, (evt.nativeEvent.pageX - trackLayoutRef.current.x) / trackLayoutRef.current.width));
+        progressAnim.setValue(p);
+        setProgress(p);
       },
       onPanResponderRelease: (evt) => {
-        const { pageX } = evt.nativeEvent;
-        const w = trackLayoutRef.current.width;
-        const x0 = trackLayoutRef.current.x;
-        if (w > 0) {
-          const p = Math.max(0, Math.min(1, (pageX - x0) / w));
-          setProgress(p);
-          updateProgress(file.id, p);
-          seekToFraction(p);
-        }
+        const p = Math.max(0, Math.min(1, (evt.nativeEvent.pageX - trackLayoutRef.current.x) / trackLayoutRef.current.width));
+        progressAnim.setValue(p);
+        setProgress(p);
+        updateProgress(file.id, p);
+        seekToFraction(p);
       },
     })
   ).current;
@@ -333,8 +320,53 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const speedDismiss      = useSwipeToDismiss(() => setShowSpeed(false));
   const appearanceDismiss = useSwipeToDismiss(() => setShowAppearance(false));
 
-  const totalMs = totalDurationMs(sentenceTimings);
-  const currentMs = progressFraction * totalMs;
+  // Animated progress bar — driven per-sentence, animates smoothly over sentence duration.
+  // Lives outside React state so it never causes PlaybackScreen re-renders on its own.
+  const progressAnim = useRef(new Animated.Value(file.progress)).current;
+  const sentAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Jump bar to sentence start, then animate linearly to sentence end over its duration.
+  useEffect(() => {
+    if (!ttsActive || !activeSentenceTiming || totalChars === 0 || sentences.length === 0) return;
+    const si = activeSentenceIndex;
+    const startFrac = (sentences[si]?.charStart ?? 0) / totalChars;
+    const endFrac   = si + 1 < sentences.length
+      ? sentences[si + 1].charStart / totalChars
+      : (sentences[si]?.charEnd ?? totalChars) / totalChars;
+    sentAnimRef.current?.stop();
+    progressAnim.setValue(startFrac);
+    sentAnimRef.current = Animated.timing(progressAnim, {
+      toValue: endFrac,
+      duration: activeSentenceTiming.durationMs,
+      useNativeDriver: false,
+      easing: Easing.linear,
+    });
+    sentAnimRef.current.start();
+  }, [activeSentenceIndex, activeSentenceTiming]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pause / resume the animation in lock-step with playback state.
+  useEffect(() => {
+    if (ttsState === 'paused' || ttsState === 'seeking') {
+      sentAnimRef.current?.stop();
+    } else if (ttsState === 'playing' && sentAnimRef.current) {
+      sentAnimRef.current.start();
+    }
+  }, [ttsState]);
+
+  // Total and elapsed display time (updates at most once per second — no jank).
+  const totalMs = totalEstimatedMs;
+  const [displayedMs, setDisplayedMs] = useState(0);
+  useEffect(() => {
+    if (ttsState !== 'playing') return;
+    const timer = setInterval(() => {
+      const id = progressAnim.addListener(({ value }) => {
+        setDisplayedMs(value * totalMs);
+        progressAnim.removeListener(id);
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [ttsState, totalMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const currentMs = displayedMs;
 
   const pageLabel = useMemo(() => {
     if (file.type === 'DOCX') {
@@ -544,7 +576,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           ttsMode={ttsActive && !searchVisible}
           ttsSentences={sentences}
           ttsActiveSentenceIndex={activeSentenceIndex}
-          ttsActiveWordIndex={activeWordIndex}
+          ttsActiveSentenceTiming={activeSentenceTiming}
           onSentenceTap={seekToSentence}
         />
       </View>
@@ -580,9 +612,15 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               {...scrubAwarePR.panHandlers}
             >
               <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}>
-                <View style={[styles.progressFill, { width: `${progress * 100}%` as any, backgroundColor: theme.colors.primary }]} />
+                <Animated.View style={[styles.progressFill, {
+                  width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                  backgroundColor: theme.colors.primary,
+                }]} />
               </View>
-              <View style={[styles.progressThumb, { left: `${progress * 100}%` as any, backgroundColor: theme.colors.primary }]} />
+              <Animated.View style={[styles.progressThumb, {
+                left: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                backgroundColor: theme.colors.primary,
+              }]} />
             </View>
             <Text style={styles.timeText}>{formatTime(totalMs)}</Text>
           </View>

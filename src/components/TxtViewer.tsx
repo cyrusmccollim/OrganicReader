@@ -6,6 +6,8 @@ import { usePlayback, FONT_FAMILIES } from '../context/PlaybackContext';
 import { Theme } from '../theme';
 import { ViewerHandle } from '../types';
 import { Sentence } from '../services/tts/TextSegmenter';
+import { SentenceTiming } from '../services/tts/TimingAccumulator';
+import { SimpleAudio } from '../services/tts/SimpleAudio';
 
 const THEME_COLORS: Record<string, { bg: string; text: string }> = {
   light:   { bg: '#ffffff', text: '#1a1a1a' },
@@ -20,11 +22,10 @@ interface Props {
   refreshKey?: number;
   onSearchResult?: (count: number, current: number) => void;
   onViewerMessage?: (msg: Record<string, any>) => void;
-  // TTS highlight mode
   ttsMode?: boolean;
   sentences?: Sentence[];
   activeSentenceIndex?: number;
-  activeWordIndex?: number;
+  activeSentenceTiming?: SentenceTiming | null;
   onSentenceTap?: (index: number) => void;
 }
 
@@ -34,10 +35,55 @@ function escapeRegex(s: string) {
 
 type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
 
+// ─── Active sentence: maintains its own word-index state via direct SimpleAudio subscription.
+// Only THIS component re-renders on each AudioProgress tick — not TxtViewer, not PlaybackScreen.
+const ActiveSentence = React.memo(function ActiveSentence({
+  displayText,
+  timing,
+  wordHighlightStyle,
+  onPress,
+}: {
+  displayText: string;
+  timing: SentenceTiming;
+  wordHighlightStyle: object;
+  onPress: () => void;
+}) {
+  const [wordIdx, setWordIdx] = useState(0);
+
+  useEffect(() => {
+    setWordIdx(0);
+    const sub = SimpleAudio.onProgress((posMs) => {
+      const absoluteMs = timing.startMs + posMs;
+      let w = 0;
+      for (let j = 0; j < timing.wordTimings.length; j++) {
+        if (absoluteMs >= timing.wordTimings[j].startMs) w = j;
+        else break;
+      }
+      setWordIdx(w);
+    });
+    return () => sub.remove();
+  }, [timing]);
+
+  const words = displayText.split(/(\s+)/);
+  return (
+    <Text suppressHighlighting onPress={onPress}>
+      {words.map((word, wi) => {
+        if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
+        const isActiveWord = Math.floor(wi / 2) === wordIdx;
+        return (
+          <Text key={wi} style={isActiveWord ? wordHighlightStyle : undefined}>
+            {word}
+          </Text>
+        );
+      })}
+    </Text>
+  );
+});
+
 const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   uri, text: textProp, refreshKey,
   onSearchResult, onViewerMessage,
-  ttsMode, sentences, activeSentenceIndex, activeWordIndex, onSentenceTap,
+  ttsMode, sentences, activeSentenceIndex, activeSentenceTiming, onSentenceTap,
 }, ref) => {
   const { theme } = useTheme();
   const { appearance } = usePlayback();
@@ -56,7 +102,6 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   const scrollViewHeightRef = useRef(0);
   const sentenceLayoutsRef = useRef<number[]>([]);
 
-  // Normalize line endings to \n so TTS sentence positions (computed on normalized text) align
   const normalize = (t: string) => t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   useEffect(() => {
@@ -72,7 +117,8 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       .catch(e => setError('Could not read file: ' + e.message));
   }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll: only when highlighted sentence passes 75% of the visible viewport
+  // Auto-scroll: scroll whenever active sentence moves outside the comfortable zone.
+  // Scrolls both UP (sentence near top) and DOWN (sentence near bottom).
   useEffect(() => {
     if (!ttsMode || activeSentenceIndex === undefined) return;
     const sentY = sentenceLayoutsRef.current[activeSentenceIndex];
@@ -80,8 +126,10 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
     const offset = scrollOffsetRef.current;
     const height = scrollViewHeightRef.current;
     if (height === 0) return;
-    if (sentY > offset + height * 0.75) {
-      scrollRef.current?.scrollTo({ y: Math.max(0, sentY - height * 0.45), animated: true });
+    const tooHigh = sentY < offset + height * 0.15;
+    const tooLow  = sentY > offset + height * 0.65;
+    if (tooHigh || tooLow) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, sentY - height * 0.30), animated: true });
     }
   }, [ttsMode, activeSentenceIndex]);
 
@@ -122,11 +170,10 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   }), [matchPositions]);
 
   // Pre-compute TTS lines — only recomputes when content or sentences change,
-  // not on every word highlight tick.
+  // never on word/sentence highlight ticks.
   const ttsLines = useMemo((): InlineNode[][] => {
     if (!sentences || sentences.length === 0 || !content) return [];
 
-    // Build a flat array of "runs": either a sentence ref or a literal string.
     type Run = { type: 'sent'; si: number } | { type: 'text'; str: string };
     const runs: Run[] = [];
     let cursor = 0;
@@ -143,9 +190,6 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       runs.push({ type: 'text', str: content.slice(cursor) });
     }
 
-    // Split runs on newlines, producing an array of lines where each
-    // line is an array of inline nodes. Splitting a text run on \n produces
-    // multiple lines; sentence runs stay on a single line (never split mid-sentence).
     const lines: InlineNode[][] = [[]];
 
     for (const run of runs) {
@@ -165,6 +209,8 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
     return lines;
   }, [content, sentences]);
 
+  const wordHighlightStyle = useMemo(() => styles.ttsWordHighlight, [styles]);
+
   const renderTTSContent = useCallback(() => {
     if (ttsLines.length === 0) return null;
 
@@ -181,13 +227,11 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
             return <View key={`line-${li}`} style={{ height: fontSize * 0.8 }} />;
           }
 
-          // Collect active sentence indices in this line to track in the View's onLayout
           const sentIndicesInLine = line
             .filter((n): n is { kind: 'sent'; si: number } => n.kind === 'sent')
             .map(n => n.si);
 
           return (
-            // <View> wrapper: onLayout here gives Y relative to the scroll content — reliable for auto-scroll
             <View
               key={`line-${li}`}
               onLayout={(e) => {
@@ -205,24 +249,17 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
                   const si = node.si;
                   const sent = sentences![si];
                   const isActive = si === activeSentenceIndex;
-                  // Normalize any residual newlines to spaces for inline rendering
                   const displayText = sent.text.replace(/\n/g, ' ');
 
-                  if (isActive) {
-                    const words = displayText.split(/(\s+)/);
+                  if (isActive && activeSentenceTiming) {
                     return (
-                      <Text key={`s-${sent.index}`} suppressHighlighting onPress={() => onSentenceTap?.(si)}>
-                        {words.map((word, wi) => {
-                          const wordIdx = Math.floor(wi / 2);
-                          const isActiveWord = wordIdx === activeWordIndex && wi % 2 === 0;
-                          if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
-                          return (
-                            <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
-                              {word}
-                            </Text>
-                          );
-                        })}
-                      </Text>
+                      <ActiveSentence
+                        key={`s-${sent.index}`}
+                        displayText={displayText}
+                        timing={activeSentenceTiming}
+                        wordHighlightStyle={wordHighlightStyle}
+                        onPress={() => onSentenceTap?.(si)}
+                      />
                     );
                   }
 
@@ -231,7 +268,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
                       key={`s-${sent.index}`}
                       suppressHighlighting
                       onPress={() => onSentenceTap?.(si)}
-                      style={{ opacity: 0.65 }}
+                      style={isActive ? undefined : { opacity: 0.65 }}
                     >
                       {displayText}
                     </Text>
@@ -243,7 +280,8 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
         })}
       </View>
     );
-  }, [ttsLines, activeSentenceIndex, activeWordIndex, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily]);
+  // activeSentenceTiming replaces activeWordIndex — re-renders only when sentence changes
+  }, [ttsLines, activeSentenceIndex, activeSentenceTiming, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily, wordHighlightStyle]);
 
   const renderSearchContent = useCallback(() => {
     if (!content) return null;
