@@ -2,8 +2,8 @@ import { AutoSkipSettings } from '../../context/PlaybackContext';
 
 export interface Sentence {
   index: number;
-  text: string;     // original raw slice of rawText — shown to user
-  ttsText: string;  // auto-skip processed version — fed to TTS engine
+  text: string;     // original raw slice of rawText -- shown to user
+  ttsText: string;  // auto-skip processed version -- fed to TTS engine
   charStart: number;
   charEnd: number;
 }

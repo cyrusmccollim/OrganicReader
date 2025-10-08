@@ -36,15 +36,17 @@ function escapeRegex(s: string) {
 type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
 
 // ─── Active sentence: maintains its own word-index state via direct SimpleAudio subscription.
-// Only THIS component re-renders on each AudioProgress tick — not TxtViewer, not PlaybackScreen.
+// Only THIS component re-renders on each AudioProgress tick -- not TxtViewer, not PlaybackScreen.
 const ActiveSentence = React.memo(function ActiveSentence({
   displayText,
   timing,
+  sentenceHighlightStyle,
   wordHighlightStyle,
   onPress,
 }: {
   displayText: string;
   timing: SentenceTiming;
+  sentenceHighlightStyle: object;
   wordHighlightStyle: object;
   onPress: () => void;
 }) {
@@ -66,7 +68,8 @@ const ActiveSentence = React.memo(function ActiveSentence({
 
   const words = displayText.split(/(\s+)/);
   return (
-    <Text suppressHighlighting onPress={onPress}>
+    // Soft sentence-level background -- entire span highlighted
+    <Text suppressHighlighting onPress={onPress} style={sentenceHighlightStyle}>
       {words.map((word, wi) => {
         if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
         const isActiveWord = Math.floor(wi / 2) === wordIdx;
@@ -92,6 +95,32 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   const readerTheme = THEME_COLORS[appearance.theme] ?? THEME_COLORS.organic;
   const fontFamily  = FONT_FAMILIES[appearance.fontStyle];
   const fontSize    = appearance.fontSize;
+
+  // Per-reader-theme highlight colors.
+  // Light/dark: use the accent primary with opacity appended as 8-digit hex.
+  // Sepia/organic: fixed colours that complement those palettes.
+  const { sentenceHighlightStyle, wordHighlightStyle } = useMemo(() => {
+    let sentBg: string;
+    let wordBg: string;
+    switch (appearance.theme) {
+      case 'sepia':
+        sentBg = 'rgba(139, 90, 43, 0.16)';   // warm amber wash
+        wordBg = 'rgba(139, 90, 43, 0.50)';   // stronger amber
+        break;
+      case 'organic':
+        sentBg = 'rgba(196, 216, 180, 0.13)'; // subtle sage on dark bg
+        wordBg = 'rgba(100, 200, 100, 0.40)'; // vivid sage
+        break;
+      default:
+        // light + dark: accent primary at low/higher opacity (8-digit hex RRGGBBAA)
+        sentBg = theme.colors.primary + '22'; // ~13 % opacity
+        wordBg = theme.colors.primary + '55'; // ~33 % opacity
+    }
+    return {
+      sentenceHighlightStyle: { backgroundColor: sentBg, borderRadius: 3 },
+      wordHighlightStyle:     { backgroundColor: wordBg, borderRadius: 3 },
+    };
+  }, [appearance.theme, theme.colors.primary]);
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSearch, setActiveSearch] = useState('');
@@ -169,7 +198,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
     clearSearch: () => { setActiveSearch(''); setSearchCurrent(0); },
   }), [matchPositions]);
 
-  // Pre-compute TTS lines — only recomputes when content or sentences change,
+  // Pre-compute TTS lines -- only recomputes when content or sentences change,
   // never on word/sentence highlight ticks.
   const ttsLines = useMemo((): InlineNode[][] => {
     if (!sentences || sentences.length === 0 || !content) return [];
@@ -208,8 +237,6 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
 
     return lines;
   }, [content, sentences]);
-
-  const wordHighlightStyle = useMemo(() => styles.ttsWordHighlight, [styles]);
 
   const renderTTSContent = useCallback(() => {
     if (ttsLines.length === 0) return null;
@@ -257,6 +284,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
                         key={`s-${sent.index}`}
                         displayText={displayText}
                         timing={activeSentenceTiming}
+                        sentenceHighlightStyle={sentenceHighlightStyle}
                         wordHighlightStyle={wordHighlightStyle}
                         onPress={() => onSentenceTap?.(si)}
                       />
@@ -281,7 +309,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       </View>
     );
   // activeSentenceTiming replaces activeWordIndex — re-renders only when sentence changes
-  }, [ttsLines, activeSentenceIndex, activeSentenceTiming, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily, wordHighlightStyle]);
+  }, [ttsLines, activeSentenceIndex, activeSentenceTiming, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily, sentenceHighlightStyle, wordHighlightStyle]);
 
   const renderSearchContent = useCallback(() => {
     if (!content) return null;
