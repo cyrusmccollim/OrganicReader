@@ -35,7 +35,7 @@ Import a PDF, EPUB, DOCX, or TXT — then read it or listen to it. The TTS engin
 
 ## Architecture notes
 
-Documents of all types (PDF, EPUB, DOCX) are extracted to plain text and rendered through a single `TxtViewer` component — a React Native `ScrollView` with native `Text` nodes, no WebViews. The TTS pipeline segments text, generates WAV chunks ahead of the playback cursor via a buffer, and feeds them to a Track Player queue. Speed control is handled at the player layer (`setRate`), keeping generation fast regardless of playback speed.
+Documents of all types (PDF, EPUB, DOCX) are extracted to plain text and rendered through a single `TxtViewer` component. The TTS pipeline segments text, generates WAV chunks ahead of the playback cursor via a buffer, and feeds them to a Track Player queue. Speed control is handled at the player layer (`setRate`), keeping generation fast regardless of playback speed.
 
 ## Status
 
