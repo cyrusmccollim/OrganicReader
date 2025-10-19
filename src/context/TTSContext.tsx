@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { EmitterSubscription } from 'react-native';
-import { ensureModel, deleteModel, isDownloadedAsync, listAll } from '../services/tts/ModelRegistry';
+import { ensureModel, deleteModel, isDownloadedAsync, listAll, cancelActiveDownload } from '../services/tts/ModelRegistry';
 import { detectLanguage } from '../services/tts/LanguageDetector';
 import { segmentText, Sentence } from '../services/tts/TextSegmenter';
 import { SentenceTiming } from '../services/tts/TimingAccumulator';
@@ -8,7 +8,7 @@ import { TTSBuffer, BufferSegment } from '../services/tts/TTSBuffer';
 import { cleanTmpDir } from '../services/tts/TTSEngine';
 import { SimpleAudio } from '../services/tts/SimpleAudio';
 import { usePlayback } from './PlaybackContext';
-import { PiperModelEntry, findModel } from '../config/ttsModels';
+import { TTSModelEntry, findModel } from '../config/ttsModels';
 
 export type TTSState =
   | 'idle'
@@ -30,8 +30,8 @@ interface TTSContextType {
   progressFraction: number;
   totalEstimatedMs: number;
   totalChars: number;
-  downloadedModels: PiperModelEntry[];
-  activeModelEntry: PiperModelEntry | null;
+  downloadedModels: TTSModelEntry[];
+  activeModelEntry: TTSModelEntry | null;
   initTTS: (rawText: string) => void;
   play: () => Promise<void>;
   pause: () => Promise<void>;
@@ -40,8 +40,9 @@ interface TTSContextType {
   seekToSentence: (index: number) => void;
   jumpSeconds: (delta: number) => void;
   setSpeed: (speed: number) => Promise<void>;
-  setVoice: (entry: PiperModelEntry) => void;
-  deleteDownloadedModel: (entry: PiperModelEntry) => Promise<void>;
+  setVoice: (entry: TTSModelEntry) => void;
+  cancelDownload: () => void;
+  deleteDownloadedModel: (entry: TTSModelEntry) => Promise<void>;
 }
 
 const TTSContext = createContext<TTSContextType>(null!);
@@ -58,11 +59,11 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const [progressFraction, setProgressFraction] = useState(0);
   const [totalEstimatedMs, setTotalEstimatedMs] = useState(0);
   const [totalChars, setTotalChars] = useState(0);
-  const [downloadedModels, setDownloadedModels] = useState<PiperModelEntry[]>([]);
-  const [activeModelEntry, setActiveModelEntry] = useState<PiperModelEntry | null>(null);
+  const [downloadedModels, setDownloadedModels] = useState<TTSModelEntry[]>([]);
+  const [activeModelEntry, setActiveModelEntry] = useState<TTSModelEntry | null>(null);
 
   const rawTextRef = useRef<string>('');
-  const overrideEntryRef = useRef<PiperModelEntry | null>(null);
+  const overrideEntryRef = useRef<TTSModelEntry | null>(null);
   const sampleRateRef = useRef(22050);
   const bufferRef = useRef<TTSBuffer | null>(null);
   const timingsRef = useRef<SentenceTiming[]>([]);
@@ -284,12 +285,19 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     await SimpleAudio.setRate(speed);
   }, []);
 
-  const setVoice = useCallback((entry: PiperModelEntry) => {
+  const setVoice = useCallback((entry: TTSModelEntry) => {
     overrideEntryRef.current = entry;
     if (rawTextRef.current) initTTS(rawTextRef.current);
   }, [initTTS]);
 
-  const deleteDownloadedModel = useCallback(async (entry: PiperModelEntry) => {
+  const cancelDownload = useCallback(() => {
+    cancelActiveDownload();
+    setTtsState(modelReadyRef.current ? 'ready' : 'idle');
+    setDownloadLanguage(null);
+    setDownloadProgress(0);
+  }, []);
+
+  const deleteDownloadedModel = useCallback(async (entry: TTSModelEntry) => {
     await deleteModel(entry);
     refreshDownloadedModels();
   }, [refreshDownloadedModels]);
@@ -305,7 +313,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       downloadedModels, activeModelEntry,
       initTTS: (text) => initTTSRef.current(text),
       play, pause, stop, seekToFraction, seekToSentence, jumpSeconds,
-      setSpeed, setVoice, deleteDownloadedModel,
+      setSpeed, setVoice, cancelDownload, deleteDownloadedModel,
     }}>
       {children}
     </TTSContext.Provider>
