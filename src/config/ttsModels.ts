@@ -3,7 +3,7 @@ export interface TTSModelEntry {
   detectionCode: string;  // used by LanguageDetector
   label: string;          // language label, e.g. 'English'
   voiceLabel: string;     // specific voice, e.g. 'Ryan (US)'
-  voiceDirName: string;   // local storage dir name (shared across accents for melo)
+  voiceDirName: string;   // local storage dir + HuggingFace repo name
   modelOnnxName: string;  // e.g. "en_US-ryan-medium.onnx"
   modelSizeBytes: number;
   sampleRate: number;
@@ -11,6 +11,7 @@ export interface TTSModelEntry {
   speakerId?: number;       // default 0
   lexiconName?: string;     // e.g. 'lexicon.txt'
   dictDirName?: string;     // e.g. 'dict' (Chinese only)
+  extraFiles?: string[];    // additional files to download (FSTs, etc.)
 }
 
 // Unique key for a model entry (voiceDirName alone is not unique for melo accents)
@@ -31,8 +32,8 @@ export function tokensUrl(entry: TTSModelEntry): string {
   return `${HF}/${entry.voiceDirName}/resolve/main/tokens.txt`;
 }
 
-export function meloZipUrl(entry: TTSModelEntry): string {
-  return `${ASSETS}/${entry.voiceDirName}.zip`;
+export function meloFileUrl(entry: TTSModelEntry, file: string): string {
+  return `${HF}/${entry.voiceDirName}/resolve/main/${file}`;
 }
 
 // espeak-ng-data is shared across all Piper voices.
@@ -67,15 +68,15 @@ function melo(
   detectionCode: string,
   label: string,
   voiceLabel: string,
-  voiceDirName: string,
+  hfName: string,
   onnx: string,
   bytes: number,
   speakerId: number,
-  opts?: { dictDirName?: string },
+  opts?: { dictDirName?: string; extraFiles?: string[] },
 ): TTSModelEntry {
   return {
     langCode, detectionCode, label, voiceLabel,
-    voiceDirName,
+    voiceDirName: `vits-melo-tts-${hfName}`,
     modelOnnxName: onnx,
     modelSizeBytes: bytes,
     sampleRate: 44100,
@@ -83,27 +84,25 @@ function melo(
     speakerId,
     lexiconName: 'lexicon.txt',
     dictDirName: opts?.dictDirName,
+    extraFiles: opts?.extraFiles,
   };
 }
 
 // ── MeloTTS models (listed first — higher quality) ──────────────────────────
 
 export const MELO_MODELS: TTSModelEntry[] = [
-  // English — 5 accents, shared voiceDirName
-  melo('en', 'en', 'English', 'Amanda (US)',  'melo-tts-en', 'model.onnx', 115_000_000, 0),
-  melo('en', 'en', 'English', 'Elise (UK)',   'melo-tts-en', 'model.onnx', 115_000_000, 1),
-  melo('en', 'en', 'English', 'Priya (IN)',   'melo-tts-en', 'model.onnx', 115_000_000, 2),
-  melo('en', 'en', 'English', 'Olivia (AU)',  'melo-tts-en', 'model.onnx', 115_000_000, 3),
-  melo('en', 'en', 'English', 'Luna',         'melo-tts-en', 'model.onnx', 115_000_000, 4),
+  // English — 5 accents share one model dir
+  melo('en', 'en', 'English', 'Amanda (US)',  'en', 'model.onnx', 170_600_000, 0),
+  melo('en', 'en', 'English', 'Elise (UK)',   'en', 'model.onnx', 170_600_000, 1),
+  melo('en', 'en', 'English', 'Priya (IN)',   'en', 'model.onnx', 170_600_000, 2),
+  melo('en', 'en', 'English', 'Olivia (AU)',  'en', 'model.onnx', 170_600_000, 3),
+  melo('en', 'en', 'English', 'Luna',         'en', 'model.onnx', 170_600_000, 4),
 
   // Chinese + English
-  melo('zh', 'zh', 'Chinese', 'Mei Lin', 'melo-tts-zh_en', 'model.onnx', 115_000_000, 0, { dictDirName: 'dict' }),
-
-  // Other languages
-  melo('es', 'es', 'Spanish',  'Isabella',  'melo-tts-es', 'model.onnx', 115_000_000, 0),
-  melo('fr', 'fr', 'French',   'Camille',   'melo-tts-fr', 'model.onnx', 115_000_000, 0),
-  melo('ja', 'ja', 'Japanese', 'Haruka',    'melo-tts-ja', 'model.onnx', 115_000_000, 0),
-  melo('ko', 'ko', 'Korean',   'Yuna',      'melo-tts-ko', 'model.onnx', 115_000_000, 0),
+  melo('zh', 'zh', 'Chinese', 'Mei Lin', 'zh_en', 'model.onnx', 170_400_000, 0, {
+    dictDirName: 'dict',
+    extraFiles: ['date.fst', 'number.fst', 'phone.fst', 'new_heteronym.fst'],
+  }),
 ];
 
 // ── Piper models ─────────────────────────────────────────────────────────────
