@@ -22,6 +22,7 @@ export type TTSState =
 
 interface TTSContextType {
   ttsState: TTSState;
+  errorMessage: string | null;
   downloadProgress: number;
   downloadLanguage: string | null;
   sentences: Sentence[];
@@ -51,6 +52,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const { autoSkip } = usePlayback();
 
   const [ttsState, setTtsState] = useState<TTSState>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadLanguage, setDownloadLanguage] = useState<string | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -146,6 +148,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     rawTextRef.current = rawText;
     flushBuffer();
     modelReadyRef.current = false;
+    setErrorMessage(null);
 
     timingsRef.current = [];
     totalEstimatedMsRef.current = 0;
@@ -186,8 +189,12 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       sampleRateRef.current = model.entry.sampleRate;
       setActiveModelEntry(model.entry);
       await refreshDownloadedModels();
-    } catch (err) {
+    } catch (err: any) {
+      const msg = err?.message?.includes('cancelled')
+        ? 'Download cancelled'
+        : `Voice download failed: ${err?.message ?? 'unknown error'}`;
       console.warn('TTS model init failed:', err);
+      setErrorMessage(msg);
       setTtsState('error');
       return;
     }
@@ -314,7 +321,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <TTSContext.Provider value={{
-      ttsState, downloadProgress, downloadLanguage,
+      ttsState, errorMessage, downloadProgress, downloadLanguage,
       sentences, activeSentenceIndex, activeSentenceTiming,
       progressFraction, totalEstimatedMs, totalChars,
       downloadedModels, activeModelEntry,
