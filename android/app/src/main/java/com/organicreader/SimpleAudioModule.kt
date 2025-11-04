@@ -132,15 +132,11 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
                 val m = Arguments.createMap()
                 m.putDouble("position", mp.currentPosition.toDouble())
                 emit("AudioProgress", m)
-                handler.postDelayed(this, 100)
+                handler.postDelayed(this, 250)
             }
         }
         progressRunnable = r
-        // Emit position 0 immediately so UI highlights without waiting
-        val m0 = Arguments.createMap()
-        m0.putDouble("position", player?.currentPosition?.toDouble() ?: 0.0)
-        emit("AudioProgress", m0)
-        handler.postDelayed(r, 100)
+        handler.postDelayed(r, 250)
     }
 
     private fun stopProgress() {

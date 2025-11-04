@@ -98,12 +98,8 @@ class SimpleAudio: RCTEventEmitter {
 
   private func startProgressTimer() {
     stopProgressTimer()
-    // Emit position immediately so UI highlights without waiting
-    if let p = self.player {
-      self.sendEvent(withName: "AudioProgress", body: ["position": p.currentTime * 1000])
-    }
     DispatchQueue.main.async {
-      self.progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+      self.progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
         guard let self = self, let p = self.player, p.isPlaying else { return }
         self.sendEvent(withName: "AudioProgress", body: ["position": p.currentTime * 1000])
       }
