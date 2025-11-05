@@ -8,7 +8,10 @@ import { TTSBuffer, BufferSegment } from '../services/tts/TTSBuffer';
 import { cleanTmpDir } from '../services/tts/TTSEngine';
 import { SimpleAudio } from '../services/tts/SimpleAudio';
 import { usePlayback } from './PlaybackContext';
-import { TTSModelEntry, findModel } from '../config/ttsModels';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TTSModelEntry, findModel, modelKey, ALL_MODELS } from '../config/ttsModels';
+
+const LAST_VOICE_KEY = 'tts_last_voice';
 
 export type TTSState =
   | 'idle'
@@ -90,6 +93,11 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshDownloadedModels();
+    AsyncStorage.getItem(LAST_VOICE_KEY).then(key => {
+      if (!key) return;
+      const entry = ALL_MODELS.find(m => modelKey(m) === key);
+      if (entry) overrideEntryRef.current = entry;
+    });
   }, [refreshDownloadedModels]);
 
   // Subscribe to AudioProgress -- ONLY update positionWithinFileRef (no setState = no re-renders)
@@ -302,6 +310,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
   const setVoice = useCallback((entry: TTSModelEntry) => {
     overrideEntryRef.current = entry;
+    AsyncStorage.setItem(LAST_VOICE_KEY, modelKey(entry)).catch(() => {});
     if (rawTextRef.current) initTTS(rawTextRef.current);
   }, [initTTS]);
 
