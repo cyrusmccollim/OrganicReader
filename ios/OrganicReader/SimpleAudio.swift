@@ -5,8 +5,10 @@ import AVFoundation
 class SimpleAudio: RCTEventEmitter {
 
   private var player: AVAudioPlayer?
+  private var nextPlayer: AVAudioPlayer?
   private var rate: Float = 1.0
   private var progressTimer: Timer?
+  private var sessionActive = false
   private let queue = DispatchQueue(label: "SimpleAudio", qos: .userInitiated)
 
   override static func requiresMainQueueSetup() -> Bool { return false }
@@ -15,27 +17,51 @@ class SimpleAudio: RCTEventEmitter {
     return ["AudioPlaybackComplete", "AudioPlaybackError", "AudioProgress"]
   }
 
+  private func ensureSession() {
+    if sessionActive { return }
+    try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+    try? AVAudioSession.sharedInstance().setActive(true)
+    sessionActive = true
+  }
+
+  private func makePlayer(_ filePath: String) throws -> AVAudioPlayer {
+    let url = filePath.hasPrefix("/") ? URL(fileURLWithPath: filePath) : URL(fileURLWithPath: filePath.replacingOccurrences(of: "file://", with: ""))
+    let p = try AVAudioPlayer(contentsOf: url)
+    p.enableRate = true
+    p.rate = self.rate
+    p.delegate = self
+    p.prepareToPlay()
+    return p
+  }
+
   @objc(play:resolver:rejecter:)
   func play(_ filePath: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     queue.async {
       do {
-        try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try AVAudioSession.sharedInstance().setActive(true)
-
-        let url = filePath.hasPrefix("/") ? URL(fileURLWithPath: filePath) : URL(fileURLWithPath: filePath.replacingOccurrences(of: "file://", with: ""))
-
+        self.ensureSession()
         self.stopProgressTimer()
         self.player?.stop()
+        self.nextPlayer?.stop()
+        self.nextPlayer = nil
 
-        let p = try AVAudioPlayer(contentsOf: url)
-        p.enableRate = true
-        p.rate = self.rate
-        p.delegate = self
-        p.prepareToPlay()
+        let p = try self.makePlayer(filePath)
         p.play()
         self.player = p
 
         self.startProgressTimer()
+        resolve(nil)
+      } catch {
+        reject("AUDIO_ERROR", error.localizedDescription, error)
+      }
+    }
+  }
+
+  @objc(queueNext:resolver:rejecter:)
+  func queueNext(_ filePath: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    queue.async {
+      do {
+        self.nextPlayer?.stop()
+        self.nextPlayer = try self.makePlayer(filePath)
         resolve(nil)
       } catch {
         reject("AUDIO_ERROR", error.localizedDescription, error)
@@ -67,6 +93,8 @@ class SimpleAudio: RCTEventEmitter {
       self.stopProgressTimer()
       self.player?.stop()
       self.player = nil
+      self.nextPlayer?.stop()
+      self.nextPlayer = nil
       resolve(nil)
     }
   }
@@ -84,6 +112,7 @@ class SimpleAudio: RCTEventEmitter {
     queue.async {
       self.rate = Float(newRate)
       self.player?.rate = self.rate
+      self.nextPlayer?.rate = self.rate
       resolve(nil)
     }
   }
@@ -116,8 +145,18 @@ class SimpleAudio: RCTEventEmitter {
 
 extension SimpleAudio: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-    stopProgressTimer()
-    sendEvent(withName: "AudioPlaybackComplete", body: nil)
+    if let np = self.nextPlayer {
+      // Gapless transition: start pre-loaded next player immediately
+      np.play()
+      self.player = np
+      self.nextPlayer = nil
+      self.startProgressTimer()
+      // Notify JS so it can queue the one after
+      sendEvent(withName: "AudioPlaybackComplete", body: nil)
+    } else {
+      stopProgressTimer()
+      sendEvent(withName: "AudioPlaybackComplete", body: nil)
+    }
   }
 
   func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {

@@ -10,6 +10,8 @@ export interface BufferSegment {
   audioPath: string;
 }
 
+interface ReadySegment { index: number; timing: SentenceTiming; path: string }
+
 const LOOKAHEAD = 3;
 
 export class TTSBuffer {
@@ -23,12 +25,12 @@ export class TTSBuffer {
   private nextGenIndex = 0;
   private cumulativeMs = 0;
 
-  // Generated segments waiting to be played
-  private readySegments: Array<{ index: number; timing: SentenceTiming; path: string }> = [];
+  private readySegments: ReadySegment[] = [];
   private isPlaying = false;
   private generatedPaths: string[] = [];
+  // The segment queued in the native player, waiting to auto-start on completion
+  private nativeQueued: ReadySegment | null = null;
 
-  // Wakes the generator loop when a segment is consumed
   private loopSignal: (() => void) | null = null;
 
   private completionSub: EmitterSubscription | null = null;
@@ -62,9 +64,32 @@ export class TTSBuffer {
   }
 
   private handleComplete() {
-    this.isPlaying = false;
-    this.loopSignal?.();  // wake generator if it was waiting
-    this.playNextReady();
+    if (this.nativeQueued) {
+      // Native already started playing the queued segment
+      const seg = this.nativeQueued;
+      this.nativeQueued = null;
+      this.onSegmentReady({ sentenceIndex: seg.index, timing: seg.timing, audioPath: seg.path });
+      // Queue the next one from the ready queue into native
+      this.queueNextNative();
+    } else {
+      // Nothing was queued — try to play from ready queue
+      this.isPlaying = false;
+      this.playNextReady();
+    }
+    this.loopSignal?.();
+  }
+
+  /** Queue the next ready segment into the native double-buffer */
+  private queueNextNative() {
+    if (this.nativeQueued || this.readySegments.length === 0 || this.cancelled) return;
+    const next = this.readySegments.shift()!;
+    this.nativeQueued = next;
+    SimpleAudio.queueNext(next.path).catch((e) => {
+      // If queueing fails, fall back to regular play on completion
+      this.nativeQueued = null;
+      this.readySegments.unshift(next);
+      if (!this.cancelled) console.warn('queueNext failed:', e);
+    });
   }
 
   private playNextReady() {
@@ -72,9 +97,11 @@ export class TTSBuffer {
     const next = this.readySegments.shift()!;
     this.isPlaying = true;
 
-    // Fire onSegmentReady BEFORE play so UI highlights the sentence immediately
     this.onSegmentReady({ sentenceIndex: next.index, timing: next.timing, audioPath: next.path });
-    SimpleAudio.play(next.path).catch((e) => {
+    SimpleAudio.play(next.path).then(() => {
+      // First segment is now playing — queue the next one for gapless transition
+      this.queueNextNative();
+    }).catch((e) => {
       this.isPlaying = false;
       if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
     });
@@ -85,7 +112,6 @@ export class TTSBuffer {
     this.running = true;
 
     while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
-      // Throttle: don't build up more than LOOKAHEAD segments
       if (this.readySegments.length >= LOOKAHEAD) {
         await new Promise<void>(resolve => { this.loopSignal = resolve; });
         this.loopSignal = null;
@@ -105,7 +131,13 @@ export class TTSBuffer {
         this.nextGenIndex++;
 
         this.readySegments.push({ index: sentence.index, timing, path: segment.audioPath });
-        this.playNextReady();
+
+        if (!this.isPlaying) {
+          this.playNextReady();
+        } else {
+          // Already playing — try to queue into native double-buffer
+          this.queueNextNative();
+        }
       } catch (e) {
         if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
         break;
@@ -119,6 +151,7 @@ export class TTSBuffer {
     this.cancelled = true;
     this.running = false;
     this.isPlaying = false;
+    this.nativeQueued = null;
     this.loopSignal?.();
     this.loopSignal = null;
     this.completionSub?.remove();

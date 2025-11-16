@@ -2,6 +2,7 @@ import { NativeModules, DeviceEventEmitter, EmitterSubscription } from 'react-na
 
 const Native = NativeModules.SimpleAudio as {
   play(filePath: string): Promise<void>;
+  queueNext(filePath: string): Promise<void>;
   pause(): Promise<void>;
   resume(): Promise<void>;
   stop(): Promise<void>;
@@ -12,6 +13,7 @@ const Native = NativeModules.SimpleAudio as {
 
 export const SimpleAudio = {
   play: (filePath: string) => Native.play(filePath),
+  queueNext: (filePath: string) => Native.queueNext(filePath),
   pause: () => Native.pause(),
   resume: () => Native.resume(),
   stop: () => Native.stop(),

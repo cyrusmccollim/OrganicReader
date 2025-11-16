@@ -13,6 +13,7 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
     private val thread = HandlerThread("SimpleAudio").also { it.start() }
     private val handler = Handler(thread.looper)
     private var player: MediaPlayer? = null
+    private var nextPlayer: MediaPlayer? = null
     private var rate = 1.0f
     private var progressRunnable: Runnable? = null
 
@@ -23,6 +24,8 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             stopProgress()
             player?.release()
             player = null
+            nextPlayer?.release()
+            nextPlayer = null
         }
         thread.quitSafely()
         super.invalidate()
@@ -34,12 +37,11 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             try {
                 stopProgress()
                 player?.release()
+                nextPlayer?.release()
+                nextPlayer = null
                 val mp = MediaPlayer().also { player = it }
                 mp.setDataSource(filePath)
-                mp.setOnCompletionListener {
-                    stopProgress()
-                    emit("AudioPlaybackComplete", null)
-                }
+                mp.setOnCompletionListener { onCurrentComplete() }
                 mp.setOnErrorListener { _, what, extra ->
                     stopProgress()
                     val m = Arguments.createMap()
@@ -55,6 +57,50 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             } catch (e: Exception) {
                 promise.reject("AUDIO_ERROR", e.message ?: "playback failed")
             }
+        }
+    }
+
+    @ReactMethod
+    fun queueNext(filePath: String, promise: Promise) {
+        handler.post {
+            try {
+                nextPlayer?.release()
+                val np = MediaPlayer()
+                np.setDataSource(filePath)
+                np.setOnCompletionListener { onCurrentComplete() }
+                np.setOnErrorListener { _, what, extra ->
+                    stopProgress()
+                    val m = Arguments.createMap()
+                    m.putString("error", "MediaPlayer error $what/$extra")
+                    emit("AudioPlaybackError", m)
+                    true
+                }
+                np.prepare()
+                np.playbackParams = PlaybackParams().setSpeed(rate)
+                nextPlayer = np
+                // Android gapless handoff
+                player?.setNextMediaPlayer(np)
+                promise.resolve(null)
+            } catch (e: Exception) {
+                promise.reject("AUDIO_ERROR", e.message ?: "queue failed")
+            }
+        }
+    }
+
+    private fun onCurrentComplete() {
+        val np = nextPlayer
+        if (np != null) {
+            // Gapless transition already happened via setNextMediaPlayer.
+            // The old player is done — release it. np is now playing.
+            player?.release()
+            player = np
+            nextPlayer = null
+            startProgress()
+            // Tell JS so it can queue the NEXT one after this
+            emit("AudioPlaybackComplete", null)
+        } else {
+            stopProgress()
+            emit("AudioPlaybackComplete", null)
         }
     }
 
@@ -87,6 +133,8 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             runCatching { player?.stop() }
             player?.release()
             player = null
+            nextPlayer?.release()
+            nextPlayer = null
             promise.resolve(null)
         }
     }
@@ -109,6 +157,7 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             rate = newRate.toFloat()
             try {
                 player?.playbackParams = PlaybackParams().setSpeed(rate)
+                nextPlayer?.playbackParams = PlaybackParams().setSpeed(rate)
                 promise.resolve(null)
             } catch (e: Exception) {
                 promise.reject("AUDIO_ERROR", e.message)
