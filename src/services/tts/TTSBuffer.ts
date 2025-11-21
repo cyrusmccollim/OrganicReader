@@ -10,7 +10,9 @@ export interface BufferSegment {
   audioPath: string;
 }
 
-const LOOKAHEAD = 3;
+// Keep 5 segments ahead — enough buffer that the TTS engine is never idle
+// waiting for playback to finish before generating the next sentence.
+const LOOKAHEAD = 5;
 
 export class TTSBuffer {
   private sentences: Sentence[];
@@ -27,6 +29,7 @@ export class TTSBuffer {
   private isPlaying = false;
   private generatedPaths: string[] = [];
 
+  // Resolved whenever a segment finishes playing (freeing a LOOKAHEAD slot)
   private loopSignal: (() => void) | null = null;
 
   private completionSub: EmitterSubscription | null = null;
@@ -61,6 +64,7 @@ export class TTSBuffer {
 
   private handleComplete() {
     this.isPlaying = false;
+    // Signal the generation loop that a slot is free
     this.loopSignal?.();
     this.playNextReady();
   }
@@ -75,6 +79,13 @@ export class TTSBuffer {
       this.isPlaying = false;
       if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
     });
+
+    // Pre-warm the player for the NEXT segment while the current one is playing.
+    // This eliminates the decode/hardware-acquire latency gap between segments.
+    const upcoming = this.readySegments[0];
+    if (upcoming) {
+      SimpleAudio.preWarm(upcoming.path);
+    }
   }
 
   private async runLoop() {

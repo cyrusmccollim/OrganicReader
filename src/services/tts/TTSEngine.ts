@@ -8,18 +8,26 @@ export interface GeneratedSegment {
 }
 
 let segmentCounter = 0;
+// Cached once after first successful mkdir — avoids two async FS calls per segment
+let tmpDirReady = false;
 
-// Speed is NOT passed to generateAndSave -- it's handled by TrackPlayer.setRate
+const TMP_DIR = `${RNFS.CachesDirectoryPath}/tts-tmp`;
+
+async function ensureTmpDir(): Promise<void> {
+  if (tmpDirReady) return;
+  if (!await RNFS.exists(TMP_DIR)) await RNFS.mkdir(TMP_DIR);
+  tmpDirReady = true;
+}
+
+// Speed is NOT passed to generateAndSave -- it's handled by SimpleAudio.setRate
 // Speaker changes require re-initializing the model via ModelRegistry
 export async function synthesize(
   text: string,
   sampleRate: number,
 ): Promise<GeneratedSegment> {
-  const tmpDir = `${RNFS.CachesDirectoryPath}/tts-tmp`;
-  const dirExists = await RNFS.exists(tmpDir);
-  if (!dirExists) await RNFS.mkdir(tmpDir);
+  await ensureTmpDir();
 
-  const outPath = `${tmpDir}/seg_${Date.now()}_${segmentCounter++}.wav`;
+  const outPath = `${TMP_DIR}/seg_${Date.now()}_${segmentCounter++}.wav`;
 
   const savedPath: string = await TTSManager.generateAndSave(text, outPath, 'wav');
   const actualPath = savedPath ?? outPath;
@@ -66,9 +74,9 @@ export async function deleteTempFile(path: string): Promise<void> {
 }
 
 export async function cleanTmpDir(): Promise<void> {
-  const tmpDir = `${RNFS.CachesDirectoryPath}/tts-tmp`;
-  const exists = await RNFS.exists(tmpDir);
+  tmpDirReady = false;
+  const exists = await RNFS.exists(TMP_DIR);
   if (!exists) return;
-  const items = await RNFS.readDir(tmpDir);
+  const items = await RNFS.readDir(TMP_DIR);
   await Promise.all(items.map(i => RNFS.unlink(i.path).catch(() => {})));
 }

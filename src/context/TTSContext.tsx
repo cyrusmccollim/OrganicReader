@@ -120,8 +120,8 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const onSegmentReady = useCallback((segment: BufferSegment) => {
-    // Update timings ref (internal use only -- not exposed in context)
-    timingsRef.current = [...timingsRef.current, segment.timing];
+    // push() instead of spread — O(1) vs O(n) for long documents
+    timingsRef.current.push(segment.timing);
 
     activeTimingRef.current = segment.timing;
     setActiveSentenceTiming(segment.timing);
