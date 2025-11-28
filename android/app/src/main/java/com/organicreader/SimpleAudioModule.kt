@@ -1,5 +1,6 @@
 package com.organicreader
 
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.os.Handler
@@ -13,8 +14,6 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
     private val thread = HandlerThread("SimpleAudio").also { it.start() }
     private val handler = Handler(thread.looper)
     private var player: MediaPlayer? = null
-    // Pre-prepared next player so there is no blocking prepare() gap between segments
-    private var nextPlayer: MediaPlayer? = null
     private var rate = 1.0f
     private var progressRunnable: Runnable? = null
 
@@ -25,8 +24,6 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             stopProgress()
             player?.release()
             player = null
-            nextPlayer?.release()
-            nextPlayer = null
         }
         thread.quitSafely()
         super.invalidate()
@@ -37,22 +34,18 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
         handler.post {
             try {
                 stopProgress()
+                runCatching { player?.stop() }
+                player?.release()
+                player = null
 
-                // Re-use pre-warmed player if path matches, else create and prepare fresh
-                val mp: MediaPlayer
-                val warm = nextPlayer
-                nextPlayer = null
-                if (warm != null) {
-                    player?.release()
-                    mp = warm
-                } else {
-                    player?.release()
-                    mp = MediaPlayer()
-                    mp.setDataSource(filePath)
-                    mp.prepare()
-                }
-
-                player = mp
+                val mp = MediaPlayer()
+                mp.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                mp.setDataSource(filePath)
                 mp.setOnCompletionListener {
                     stopProgress()
                     emit("AudioPlaybackComplete", null)
@@ -64,8 +57,12 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
                     emit("AudioPlaybackError", m)
                     true
                 }
-                mp.playbackParams = PlaybackParams().setSpeed(rate)
+                mp.prepare()
+                mp.playbackParams = PlaybackParams()
+                    .setSpeed(rate)
+                    .setAudioStretchMode(PlaybackParams.AUDIO_STRETCH_MODE_VOICE)
                 mp.start()
+                player = mp
                 startProgress()
                 promise.resolve(null)
             } catch (e: Exception) {
@@ -74,23 +71,10 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /** Pre-prepare the next segment's MediaPlayer in the background so play() has no blocking prepare() call. */
+    // No-op stub kept so the JS SimpleAudio.preWarm call doesn't crash
     @ReactMethod
     fun preWarm(filePath: String, promise: Promise) {
-        handler.post {
-            try {
-                nextPlayer?.release()
-                val mp = MediaPlayer()
-                mp.setDataSource(filePath)
-                mp.prepare()  // runs on the audio handler thread, not blocking JS
-                mp.playbackParams = PlaybackParams().setSpeed(rate)
-                nextPlayer = mp
-                promise.resolve(null)
-            } catch (e: Exception) {
-                nextPlayer = null
-                promise.resolve(null)  // pre-warm failure is non-fatal
-            }
-        }
+        promise.resolve(null)
     }
 
     @ReactMethod
@@ -122,8 +106,6 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
             runCatching { player?.stop() }
             player?.release()
             player = null
-            nextPlayer?.release()
-            nextPlayer = null
             promise.resolve(null)
         }
     }
@@ -145,8 +127,9 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
         handler.post {
             rate = newRate.toFloat()
             try {
-                player?.playbackParams = PlaybackParams().setSpeed(rate)
-                nextPlayer?.playbackParams = PlaybackParams().setSpeed(rate)
+                player?.playbackParams = PlaybackParams()
+                    .setSpeed(rate)
+                    .setAudioStretchMode(PlaybackParams.AUDIO_STRETCH_MODE_VOICE)
                 promise.resolve(null)
             } catch (e: Exception) {
                 promise.reject("AUDIO_ERROR", e.message)
