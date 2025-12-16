@@ -13,6 +13,7 @@ import {
   Easing,
   Pressable,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import { useTheme } from '../ThemeContext';
@@ -221,6 +222,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const {
     ttsState, errorMessage, downloadProgress, downloadLanguage,
     sentences, activeSentenceIndex, activeSentenceTiming,
+    // activeSentenceTiming used for progress bar animation only
     progressFraction, totalEstimatedMs, totalChars,
     downloadedModels, activeModelEntry,
     initTTS, play, pause, stop, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice, cancelDownload,
@@ -485,8 +487,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
       return (
         m.voiceLabel.toLowerCase().includes(q) ||
         m.label.toLowerCase().includes(q) ||
-        m.langCode.toLowerCase().includes(q) ||
-        m.engine.includes(q)
+        m.langCode.toLowerCase().includes(q)
       );
     });
   }, [voiceSearch, selectedLangTab]);
@@ -575,8 +576,9 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           ttsMode={ttsActive && !searchVisible}
           ttsSentences={sentences}
           ttsActiveSentenceIndex={activeSentenceIndex}
-          ttsActiveSentenceTiming={activeSentenceTiming}
           onSentenceTap={seekToSentence}
+          initialProgress={file.progress}
+          onScrollProgress={(frac) => { if (!ttsActive) updateProgress(file.id, frac); }}
         />
       </View>
 
@@ -915,7 +917,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                     const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
                     const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
                     const isLast = idx === filteredVoices.length - 1;
-                    const isMelo = m.engine === 'melo';
                     return (
                       <TouchableOpacity
                         key={key}
@@ -927,23 +928,19 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                         onPress={() => { setVoice(m); setShowVoicePicker(false); setVoiceSearch(''); }}
                         activeOpacity={0.7}
                       >
-                        <View style={[
-                          styles.voiceAvatar,
-                          {
-                            backgroundColor: isSelected
-                              ? theme.colors.primary + '30'
-                              : isDownloaded
-                              ? theme.colors.primary + '16'
-                              : theme.colors.surface,
-                            borderColor: isSelected
-                              ? theme.colors.primary
-                              : isDownloaded
-                              ? theme.colors.primary + '60'
-                              : theme.colors.border,
-                          },
-                        ]}>
-                          <VoiceIcon size={18} color={isSelected || isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
-                        </View>
+                        <Image
+                          source={{ uri: `https://api.dicebear.com/9.x/personas/png?seed=${encodeURIComponent(m.voiceLabel)}&size=80` }}
+                          style={[
+                            styles.voiceAvatar,
+                            {
+                              borderColor: isSelected
+                                ? theme.colors.primary
+                                : isDownloaded
+                                ? theme.colors.primary + '60'
+                                : theme.colors.border,
+                            },
+                          ]}
+                        />
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Text style={[
@@ -953,15 +950,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                             ]}>
                               {voiceName}
                             </Text>
-                            {isMelo && (
-                              <View style={{
-                                backgroundColor: theme.colors.primary + '20',
-                                paddingHorizontal: 5, paddingVertical: 1,
-                                borderRadius: 4,
-                              }}>
-                                <Text style={{ color: theme.colors.primary, fontSize: 9, fontWeight: '800' }}>MELO</Text>
-                              </View>
-                            )}
                           </View>
                           <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
                             {selectedLangTab === 'All' ? `${m.label} · ` : ''}
@@ -1151,7 +1139,7 @@ function makeStyles(theme: Theme) {
     pageIndicator: { textAlign: 'center', fontSize: 12, color: theme.colors.textSecondary, fontWeight: '700', marginBottom: 8 },
     controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     voiceAvatarBtn: { width: 52, height: 52, justifyContent: 'center', alignItems: 'center' },
-    voiceAvatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+    voiceAvatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
     skipBtn: { width: 52, height: 52, justifyContent: 'center', alignItems: 'center' },
     playBtn: {
       width: 68, height: 68, borderRadius: 34,

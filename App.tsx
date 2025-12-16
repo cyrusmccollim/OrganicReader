@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StatusBar, StyleSheet, View, Alert } from 'react-native';
+import { StatusBar, StyleSheet, View, Alert, BackHandler } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
@@ -127,6 +127,21 @@ function AppContent() {
     setOcrEditTitle('');
     openFile(file);
   };
+
+  // Hardware back button navigation
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      switch (currentScreen) {
+        case 'playback':     setCurrentScreen('library'); return true;
+        case 'userProfile':  setCurrentScreen('profile'); return true;
+        case 'deletedFiles': setCurrentScreen('profile'); return true;
+        case 'signIn':       setCurrentScreen('profile'); return true;
+        case 'scan':         setCurrentScreen('home');    return true;
+        default:             return false;
+      }
+    });
+    return () => sub.remove();
+  }, [currentScreen]);
 
   const showNavBar =
     currentScreen !== 'playback' &&

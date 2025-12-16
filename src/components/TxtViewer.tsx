@@ -6,8 +6,6 @@ import { usePlayback, FONT_FAMILIES } from '../context/PlaybackContext';
 import { Theme } from '../theme';
 import { ViewerHandle } from '../types';
 import { Sentence } from '../services/tts/TextSegmenter';
-import { SentenceTiming } from '../services/tts/TimingAccumulator';
-import { SimpleAudio } from '../services/tts/SimpleAudio';
 
 const THEME_COLORS: Record<string, { bg: string; text: string }> = {
   light:   { bg: '#ffffff', text: '#1a1a1a' },
@@ -25,8 +23,9 @@ interface Props {
   ttsMode?: boolean;
   sentences?: Sentence[];
   activeSentenceIndex?: number;
-  activeSentenceTiming?: SentenceTiming | null;
   onSentenceTap?: (index: number) => void;
+  initialProgress?: number;
+  onScrollProgress?: (fraction: number) => void;
 }
 
 function escapeRegex(s: string) {
@@ -35,83 +34,11 @@ function escapeRegex(s: string) {
 
 type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
 
-// ─── Active sentence: maintains its own word-index state via direct SimpleAudio subscription.
-// Only THIS component re-renders on each AudioProgress tick -- not TxtViewer, not PlaybackScreen.
-// ─── Active sentence: maintains its own word-index state via direct SimpleAudio subscription.
-// Only THIS component re-renders on each AudioProgress tick -- not TxtViewer, not PlaybackScreen.
-const ActiveSentence = React.memo(function ActiveSentence({
-  displayText,
-  timing,
-  sentenceHighlightStyle,
-  wordHighlightStyle,
-  onPress,
-}: {
-  displayText: string;
-  timing: SentenceTiming;
-  sentenceHighlightStyle: object;
-  wordHighlightStyle: object;
-  onPress: () => void;
-}) {
-  const [wordIdx, setWordIdx] = useState(0);
-
-  // Split into tokens (words at even indices, spaces at odd) once per displayText change.
-  const tokens = useMemo(() => displayText.split(/(\s+)/), [displayText]);
-
-  // Per-word start fractions based on character length — short words ("the", "a") get less
-  // time than long words ("specifically"), so the highlight doesn't stall on function words.
-  const wordStartFractions = useMemo(() => {
-    const words = tokens.filter((_, i) => i % 2 === 0);
-    const lens = words.map(w => Math.max(w.length, 1));
-    const total = lens.reduce((s, l) => s + l, 0);
-    let cum = 0;
-    return lens.map(l => { const f = cum; cum += l / total; return f; });
-  }, [tokens]);
-
-  // Refs so the single progress subscription always sees current values without re-subscribing.
-  const durationMsRef = useRef(timing.durationMs);
-  const fractionsRef = useRef(wordStartFractions);
-  durationMsRef.current = timing.durationMs;
-  fractionsRef.current = wordStartFractions;
-
-  // Reset to word 0 when a new sentence becomes active.
-  useEffect(() => { setWordIdx(0); }, [timing]);
-
-  // Subscribe once on mount. Uses char-proportional fractions so short words don't stall
-  // the highlight while audio has already moved to the next word.
-  useEffect(() => {
-    const sub = SimpleAudio.onProgress((posMs) => {
-      const dur = durationMsRef.current;
-      if (dur <= 0) return;
-      const frac = posMs / dur;
-      const fracs = fractionsRef.current;
-      let next = 0;
-      for (let i = fracs.length - 1; i >= 0; i--) {
-        if (fracs[i] <= frac) { next = i; break; }
-      }
-      setWordIdx(prev => (prev === next ? prev : next));
-    });
-    return () => sub.remove();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <Text suppressHighlighting onPress={onPress} style={sentenceHighlightStyle}>
-      {tokens.map((token, wi) => {
-        if (wi % 2 === 1) return <Text key={wi}>{token}</Text>;
-        const isActive = Math.floor(wi / 2) === wordIdx;
-        return (
-          <Text key={wi} style={isActive ? wordHighlightStyle : undefined}>
-            {token}
-          </Text>
-        );
-      })}
-    </Text>
-  );
-});
-
 const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   uri, text: textProp, refreshKey,
   onSearchResult, onViewerMessage,
-  ttsMode, sentences, activeSentenceIndex, activeSentenceTiming, onSentenceTap,
+  ttsMode, sentences, activeSentenceIndex, onSentenceTap,
+  initialProgress, onScrollProgress,
 }, ref) => {
   const { theme } = useTheme();
   const { appearance } = usePlayback();
@@ -124,27 +51,14 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   // Per-reader-theme highlight colors.
   // Light/dark: use the accent primary with opacity appended as 8-digit hex.
   // Sepia/organic: fixed colours that complement those palettes.
-  const { sentenceHighlightStyle, wordHighlightStyle } = useMemo(() => {
-    let sentBg: string;
-    let wordBg: string;
+  const wordHighlightStyle = useMemo(() => {
+    let bg: string;
     switch (appearance.theme) {
-      case 'sepia':
-        sentBg = 'rgba(139, 90, 43, 0.16)';   // warm amber wash
-        wordBg = 'rgba(139, 90, 43, 0.50)';   // stronger amber
-        break;
-      case 'organic':
-        sentBg = 'rgba(196, 216, 180, 0.13)'; // subtle sage on dark bg
-        wordBg = 'rgba(100, 200, 100, 0.40)'; // vivid sage
-        break;
-      default:
-        // light + dark: accent primary at low/higher opacity (8-digit hex RRGGBBAA)
-        sentBg = theme.colors.primary + '22'; // ~13 % opacity
-        wordBg = theme.colors.primary + '55'; // ~33 % opacity
+      case 'sepia':  bg = 'rgba(139, 90, 43, 0.50)';  break;
+      case 'organic': bg = 'rgba(100, 200, 100, 0.40)'; break;
+      default:       bg = theme.colors.primary + '55';
     }
-    return {
-      sentenceHighlightStyle: { backgroundColor: sentBg, borderRadius: 3 },
-      wordHighlightStyle:     { backgroundColor: wordBg, borderRadius: 3 },
-    };
+    return { backgroundColor: bg, borderRadius: 3 };
   }, [appearance.theme, theme.colors.primary]);
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +69,8 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   const contentHeightRef = useRef(0);
   const scrollViewHeightRef = useRef(0);
   const lineViewRefs = useRef<Map<number, View>>(new Map());
+  const hasRestoredRef = useRef(false);
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const normalize = (t: string) => t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
@@ -215,8 +131,8 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
 
   useImperativeHandle(ref, () => ({
     search: (query) => { setActiveSearch(query); setSearchCurrent(0); },
-    searchNext: () => setSearchCurrent(c => matchPositions.length ? (c + 1) % matchPositions.length : 0),
-    searchPrev: () => setSearchCurrent(c => matchPositions.length ? (c - 1 + matchPositions.length) % matchPositions.length : 0),
+    searchNext: () => setSearchCurrent((c: number) => matchPositions.length ? (c + 1) % matchPositions.length : 0),
+    searchPrev: () => setSearchCurrent((c: number) => matchPositions.length ? (c - 1 + matchPositions.length) % matchPositions.length : 0),
     clearSearch: () => { setActiveSearch(''); setSearchCurrent(0); },
   }), [matchPositions]);
 
@@ -300,25 +216,12 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
                   const isActive = si === activeSentenceIndex;
                   const displayText = sent.text.replace(/\n/g, ' ');
 
-                  if (isActive && activeSentenceTiming) {
-                    return (
-                      <ActiveSentence
-                        key={`s-${sent.index}`}
-                        displayText={displayText}
-                        timing={activeSentenceTiming}
-                        sentenceHighlightStyle={sentenceHighlightStyle}
-                        wordHighlightStyle={wordHighlightStyle}
-                        onPress={() => onSentenceTap?.(si)}
-                      />
-                    );
-                  }
-
                   return (
                     <Text
                       key={`s-${sent.index}`}
                       suppressHighlighting
                       onPress={() => onSentenceTap?.(si)}
-                      style={isActive ? undefined : { opacity: 0.65 }}
+                      style={isActive ? wordHighlightStyle : { opacity: 0.65 }}
                     >
                       {displayText}
                     </Text>
@@ -330,8 +233,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
         })}
       </View>
     );
-  // activeSentenceTiming replaces activeWordIndex — re-renders only when sentence changes
-  }, [ttsLines, activeSentenceIndex, activeSentenceTiming, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily, sentenceHighlightStyle, wordHighlightStyle]);
+  }, [ttsLines, activeSentenceIndex, onSentenceTap, sentences, styles, fontSize, readerTheme, fontFamily, wordHighlightStyle]);
 
   const renderSearchContent = useCallback(() => {
     if (!content) return null;
@@ -352,7 +254,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
 
     return (
       <Text style={textStyle}>
-        {parts.map((part, i) => {
+        {parts.map((part: string, i: number) => {
           if (i % 2 === 1) {
             const isActive = matchIdx === searchCurrent;
             const key = i;
@@ -391,8 +293,24 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       style={[styles.scroll, { backgroundColor: readerTheme.bg }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={200}
+      onScroll={(e) => {
+        if (!onScrollProgress) return;
+        const y = e.nativeEvent.contentOffset.y;
+        const max = contentHeightRef.current - scrollViewHeightRef.current;
+        if (max <= 0) return;
+        const frac = Math.max(0, Math.min(1, y / max));
+        if (scrollDebounceRef.current) clearTimeout(scrollDebounceRef.current);
+        scrollDebounceRef.current = setTimeout(() => onScrollProgress(frac), 600);
+      }}
       onLayout={(e) => { scrollViewHeightRef.current = e.nativeEvent.layout.height; }}
-      onContentSizeChange={(_, h) => { contentHeightRef.current = h; }}
+      onContentSizeChange={(_, h) => {
+        contentHeightRef.current = h;
+        if (initialProgress && initialProgress > 0 && !hasRestoredRef.current && scrollViewHeightRef.current > 0) {
+          hasRestoredRef.current = true;
+          scrollRef.current?.scrollTo({ y: Math.max(0, initialProgress * (h - scrollViewHeightRef.current)), animated: false });
+        }
+      }}
     >
       {ttsMode && sentences ? renderTTSContent() : renderSearchContent()}
     </ScrollView>
