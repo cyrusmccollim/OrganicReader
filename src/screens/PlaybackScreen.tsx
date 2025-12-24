@@ -315,10 +315,20 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     return () => { stop(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync reading progress fraction (for library persistence)
+  // Sync TTS char-based progress fraction → local state + persist to library.
+  // Debounced to avoid hammering AsyncStorage on every sentence change.
+  const progressSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (progressFraction > 0) setProgress(progressFraction);
-  }, [progressFraction]);
+    if (progressFraction <= 0) return;
+    setProgress(progressFraction);
+    if (progressSaveTimerRef.current) clearTimeout(progressSaveTimerRef.current);
+    progressSaveTimerRef.current = setTimeout(() => {
+      updateProgress(file.id, progressFraction);
+    }, 1000);
+    return () => {
+      if (progressSaveTimerRef.current) clearTimeout(progressSaveTimerRef.current);
+    };
+  }, [progressFraction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scrub bar drag — drives progressAnim directly (no React state = no re-renders during drag).
   const scrubAwarePR = useRef(
@@ -504,14 +514,14 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     initTTS(text);
   }, [initTTS]);
 
-  // On first play after opening, resume from saved position instead of sentence 0.
-  const hasResumedRef = useRef(false);
+  // Auto-seek to saved progress once per document open (not per stop/play cycle).
+  const didAutoSeekRef = useRef(false);
 
   const handlePlayPause = useCallback(async () => {
     if (isPlaying) {
       await pause();
-    } else if (!hasResumedRef.current && file.progress > 0 && ttsState === 'ready') {
-      hasResumedRef.current = true;
+    } else if (ttsState === 'ready' && !didAutoSeekRef.current && file.progress > 0) {
+      didAutoSeekRef.current = true;
       seekToFraction(file.progress);
     } else {
       await play();
@@ -634,7 +644,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           ttsActiveSentenceIndex={activeSentenceIndex}
           onSentenceTap={seekToSentence}
           initialProgress={file.progress}
-          onScrollProgress={(frac) => { if (!ttsActive) updateProgress(file.id, frac); }}
         />
       </View>
 

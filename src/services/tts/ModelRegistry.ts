@@ -18,6 +18,7 @@ export interface ActiveModel {
 
 let activeJobId: number | null = null;
 let cancelled = false;
+let loadedModelKey: string | null = null;
 
 async function ensureDir(path: string) {
   if (!await RNFS.exists(path)) await RNFS.mkdir(path);
@@ -240,15 +241,19 @@ export async function ensureModel(
     ? await ensureMelo(entry, onProgress)
     : await ensurePiper(entry, onProgress);
 
-  const cfg = JSON.stringify({
-    modelPath: model.modelPath,
-    tokensPath: model.tokensPath,
-    dataDirPath: model.dataDirPath,
-    lexiconPath: model.lexiconPath,
-    dictDirPath: model.dictDirPath,
-    speakerId: model.speakerId,
-  });
-  await TTSManager.initialize(cfg);
+  const cacheKey = `${model.entry.voiceDirName}:${model.speakerId}`;
+  if (loadedModelKey !== cacheKey) {
+    const cfg = JSON.stringify({
+      modelPath: model.modelPath,
+      tokensPath: model.tokensPath,
+      dataDirPath: model.dataDirPath,
+      lexiconPath: model.lexiconPath,
+      dictDirPath: model.dictDirPath,
+      speakerId: model.speakerId,
+    });
+    await TTSManager.initialize(cfg);
+    loadedModelKey = cacheKey;
+  }
 
   return model;
 }
@@ -265,4 +270,6 @@ export function listAll(): TTSModelEntry[] {
 export async function deleteModel(entry: TTSModelEntry): Promise<void> {
   const dir = voiceDir(entry);
   if (await RNFS.exists(dir)) await RNFS.unlink(dir);
+  // Invalidate cache so next ensureModel re-initializes the native engine
+  loadedModelKey = null;
 }

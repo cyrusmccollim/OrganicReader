@@ -1,7 +1,7 @@
 import { EmitterSubscription } from 'react-native';
 import { Sentence } from './TextSegmenter';
 import { SentenceTiming, buildSentenceTiming } from './TimingAccumulator';
-import { synthesize, deleteTempFile } from './TTSEngine';
+import { synthesize, deleteTempFile, bumpEpoch, currentEpoch } from './TTSEngine';
 import { SimpleAudio } from './SimpleAudio';
 
 export interface BufferSegment {
@@ -117,6 +117,8 @@ export class TTSBuffer {
     if (this.running || this.cancelled) return;
     this.running = true;
 
+    const epoch = currentEpoch();
+
     while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
       if (this.readySegments.length >= LOOKAHEAD) {
         await new Promise<void>(resolve => { this.loopSignal = resolve; });
@@ -128,8 +130,9 @@ export class TTSBuffer {
       const startMs = this.cumulativeMs;
 
       try {
-        const segment = await synthesize(sentence.ttsText, this.sampleRate);
-        if (this.cancelled) { await deleteTempFile(segment.audioPath); break; }
+        const segment = await synthesize(sentence.ttsText, this.sampleRate, epoch);
+        // null = epoch was bumped (flush called) — exit immediately, no error
+        if (segment === null || this.cancelled) break;
 
         this.generatedPaths.push(segment.audioPath);
         const timing = buildSentenceTiming(sentence, startMs, segment.durationMs);
@@ -155,6 +158,8 @@ export class TTSBuffer {
     this.cancelled = true;
     this.running = false;
     this.isPlaying = false;
+    // Bump epoch so any in-flight synthesize() calls from this buffer are discarded
+    bumpEpoch();
     this.loopSignal?.();
     this.loopSignal = null;
     this.completionSub?.remove();
