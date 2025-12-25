@@ -10,9 +10,8 @@ export interface BufferSegment {
   audioPath: string;
 }
 
-// Keep 5 segments ahead — enough buffer that the TTS engine is never idle
-// waiting for playback to finish before generating the next sentence.
-const LOOKAHEAD = 5;
+// How many segments to keep synthesized ahead of the current playback position.
+const LOOKAHEAD = 3;
 
 export class TTSBuffer {
   private sentences: Sentence[];
@@ -29,6 +28,10 @@ export class TTSBuffer {
   private readySegments: Array<{ index: number; timing: SentenceTiming; path: string }> = [];
   private isPlaying = false;
   private generatedPaths: string[] = [];
+
+  // When set, the loop will skip all ready segments before this sentence index,
+  // and play from here as soon as it arrives — without flushing/restarting.
+  private pendingSeekIndex: number | null = null;
 
   // Resolved whenever a segment finishes playing (freeing a LOOKAHEAD slot)
   private loopSignal: (() => void) | null = null;
@@ -65,38 +68,67 @@ export class TTSBuffer {
     this.runLoop();
   }
 
-  // Seek to an already-synthesized sentence without re-synthesis.
-  // Returns true if the sentence was found in the ready queue (fast path),
-  // false if the caller must flush and restart synthesis.
+  // Seek to a sentence. Two fast paths, one slow path:
+  //   1. Already in readySegments → drain to it and play immediately (instant).
+  //   2. Within the next LOOKAHEAD sentences being generated → set pendingSeekIndex,
+  //      play as soon as synthesis completes (~1 sentence synthesis time, not a full restart).
+  //   Returns false only if the target is far enough back that we must flush+restart.
   seekTo(sentenceIndex: number): boolean {
+    // Fast path: already synthesized and queued.
     const idx = this.readySegments.findIndex(s => s.index === sentenceIndex);
-    if (idx === -1) return false;
+    if (idx !== -1) {
+      const skipped = this.readySegments.splice(0, idx);
+      skipped.forEach(s => deleteTempFile(s.path).catch(() => {}));
+      this.isPlaying = false;
+      SimpleAudio.stop().catch(() => {});
+      this.loopSignal?.();
+      this.loopSignal = null;
+      this.playNextReady();
+      return true;
+    }
 
-    // Delete files for skipped segments.
-    const skipped = this.readySegments.splice(0, idx);
-    skipped.forEach(s => deleteTempFile(s.path).catch(() => {}));
+    // Semi-fast path: target is ahead of current generation position (we'll get there soon)
+    // OR target is the sentence currently being synthesized in native.
+    // In both cases: set pendingSeekIndex and let the loop handle it without a full restart.
+    if (sentenceIndex >= this.nextGenIndex) {
+      // Target is ahead — generation will reach it. Mark it as the seek target.
+      // Stop audio and clear ready segments that are behind the target.
+      this.pendingSeekIndex = sentenceIndex;
+      this.isPlaying = false;
+      SimpleAudio.stop().catch(() => {});
+      // Drain and delete all ready segments before the target
+      const stale = this.readySegments.splice(0);
+      stale.forEach(s => deleteTempFile(s.path).catch(() => {}));
+      // Unblock loop if it was waiting for a LOOKAHEAD slot
+      this.loopSignal?.();
+      this.loopSignal = null;
+      return true;
+    }
 
-    // Stop current audio (does not fire AudioPlaybackComplete).
-    this.isPlaying = false;
-    SimpleAudio.stop().catch(() => {});
-
-    // Unblock the generation loop if it was waiting for a free slot.
-    this.loopSignal?.();
-    this.loopSignal = null;
-
-    this.playNextReady();
-    return true;
+    // Target is behind current generation — must flush and restart from there.
+    return false;
   }
 
   private handleComplete() {
     this.isPlaying = false;
-    // Signal the generation loop that a slot is free
     this.loopSignal?.();
     this.playNextReady();
   }
 
   private playNextReady() {
-    if (this.isPlaying || this.readySegments.length === 0 || this.cancelled) return;
+    if (this.isPlaying || this.cancelled) return;
+
+    // If there's a pending seek, discard segments before the target.
+    if (this.pendingSeekIndex !== null) {
+      const targetIdx = this.readySegments.findIndex(s => s.index >= this.pendingSeekIndex!);
+      if (targetIdx === -1) return; // target not synthesized yet — loop will call us when ready
+      const skipped = this.readySegments.splice(0, targetIdx);
+      skipped.forEach(s => deleteTempFile(s.path).catch(() => {}));
+      this.pendingSeekIndex = null;
+    }
+
+    if (this.readySegments.length === 0) return;
+
     const next = this.readySegments.shift()!;
     this.isPlaying = true;
 
@@ -106,11 +138,8 @@ export class TTSBuffer {
       if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
     });
 
-    // Pre-warm the player for the NEXT segment while the current one is playing.
     const upcoming = this.readySegments[0];
-    if (upcoming) {
-      SimpleAudio.preWarm(upcoming.path);
-    }
+    if (upcoming) SimpleAudio.preWarm(upcoming.path);
   }
 
   private async runLoop() {
@@ -120,7 +149,7 @@ export class TTSBuffer {
     const epoch = currentEpoch();
 
     while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
-      if (this.readySegments.length >= LOOKAHEAD) {
+      if (this.readySegments.length >= LOOKAHEAD && this.pendingSeekIndex === null) {
         await new Promise<void>(resolve => { this.loopSignal = resolve; });
         this.loopSignal = null;
         continue;
@@ -131,7 +160,6 @@ export class TTSBuffer {
 
       try {
         const segment = await synthesize(sentence.ttsText, this.sampleRate, epoch);
-        // null = epoch was bumped (flush called) — exit immediately, no error
         if (segment === null || this.cancelled) break;
 
         this.generatedPaths.push(segment.audioPath);
@@ -139,8 +167,6 @@ export class TTSBuffer {
         this.cumulativeMs += segment.durationMs;
         this.nextGenIndex++;
 
-        // Notify TTSContext of the timing as soon as it's generated — this lets
-        // jumpSeconds find forward-buffered sentences without waiting for them to play.
         this.onSegmentGenerated(timing);
 
         this.readySegments.push({ index: sentence.index, timing, path: segment.audioPath });
@@ -158,7 +184,7 @@ export class TTSBuffer {
     this.cancelled = true;
     this.running = false;
     this.isPlaying = false;
-    // Bump epoch so any in-flight synthesize() calls from this buffer are discarded
+    this.pendingSeekIndex = null;
     bumpEpoch();
     this.loopSignal?.();
     this.loopSignal = null;
