@@ -29,10 +29,6 @@ export class TTSBuffer {
   private isPlaying = false;
   private generatedPaths: string[] = [];
 
-  // When set, the loop will skip all ready segments before this sentence index,
-  // and play from here as soon as it arrives — without flushing/restarting.
-  private pendingSeekIndex: number | null = null;
-
   // Resolved whenever a segment finishes playing (freeing a LOOKAHEAD slot)
   private loopSignal: (() => void) | null = null;
 
@@ -68,13 +64,10 @@ export class TTSBuffer {
     this.runLoop();
   }
 
-  // Seek to a sentence. Two fast paths, one slow path:
-  //   1. Already in readySegments → drain to it and play immediately (instant).
-  //   2. Within the next LOOKAHEAD sentences being generated → set pendingSeekIndex,
-  //      play as soon as synthesis completes (~1 sentence synthesis time, not a full restart).
-  //   Returns false only if the target is far enough back that we must flush+restart.
+  // Seek to a sentence. Returns true only if the target is already synthesized
+  // and queued (instant playback). Returns false otherwise — caller should
+  // flush and restart synthesis directly from the target sentence.
   seekTo(sentenceIndex: number): boolean {
-    // Fast path: already synthesized and queued.
     const idx = this.readySegments.findIndex(s => s.index === sentenceIndex);
     if (idx !== -1) {
       const skipped = this.readySegments.splice(0, idx);
@@ -86,26 +79,6 @@ export class TTSBuffer {
       this.playNextReady();
       return true;
     }
-
-    // Semi-fast path: target is ahead of current generation position (we'll get there soon)
-    // OR target is the sentence currently being synthesized in native.
-    // In both cases: set pendingSeekIndex and let the loop handle it without a full restart.
-    if (sentenceIndex >= this.nextGenIndex) {
-      // Target is ahead — generation will reach it. Mark it as the seek target.
-      // Stop audio and clear ready segments that are behind the target.
-      this.pendingSeekIndex = sentenceIndex;
-      this.isPlaying = false;
-      SimpleAudio.stop().catch(() => {});
-      // Drain and delete all ready segments before the target
-      const stale = this.readySegments.splice(0);
-      stale.forEach(s => deleteTempFile(s.path).catch(() => {}));
-      // Unblock loop if it was waiting for a LOOKAHEAD slot
-      this.loopSignal?.();
-      this.loopSignal = null;
-      return true;
-    }
-
-    // Target is behind current generation — must flush and restart from there.
     return false;
   }
 
@@ -117,16 +90,6 @@ export class TTSBuffer {
 
   private playNextReady() {
     if (this.isPlaying || this.cancelled) return;
-
-    // If there's a pending seek, discard segments before the target.
-    if (this.pendingSeekIndex !== null) {
-      const targetIdx = this.readySegments.findIndex(s => s.index >= this.pendingSeekIndex!);
-      if (targetIdx === -1) return; // target not synthesized yet — loop will call us when ready
-      const skipped = this.readySegments.splice(0, targetIdx);
-      skipped.forEach(s => deleteTempFile(s.path).catch(() => {}));
-      this.pendingSeekIndex = null;
-    }
-
     if (this.readySegments.length === 0) return;
 
     const next = this.readySegments.shift()!;
@@ -149,7 +112,7 @@ export class TTSBuffer {
     const epoch = currentEpoch();
 
     while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
-      if (this.readySegments.length >= LOOKAHEAD && this.pendingSeekIndex === null) {
+      if (this.readySegments.length >= LOOKAHEAD) {
         await new Promise<void>(resolve => { this.loopSignal = resolve; });
         this.loopSignal = null;
         continue;
@@ -184,7 +147,6 @@ export class TTSBuffer {
     this.cancelled = true;
     this.running = false;
     this.isPlaying = false;
-    this.pendingSeekIndex = null;
     bumpEpoch();
     this.loopSignal?.();
     this.loopSignal = null;
