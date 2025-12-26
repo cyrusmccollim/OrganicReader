@@ -14,13 +14,13 @@ A mobile reading app that turns documents into natural speech. Built with React 
 
 ## What it does
 
-Import a PDF, EPUB, DOCX, or TXT, then read it or listen to it. The TTS engine runs entirely on-device using [Piper](https://github.com/rhasspy/piper) neural voices, so nothing leaves the phone.
+Import a PDF, EPUB, DOCX, or TXT, then read it or listen to it. The TTS engine runs entirely on-device using [Piper](https://github.com/rhasspy/piper) neural voices.
 
 - **On-device TTS:** 30+ natural voices across a dozen languages, zero cloud calls
 - **Sentence-level highlighting:** text tracks audio in real time as it plays
-- **Multiple formats:** PDF, EPUB, DOCX, TXT, web links, photos, scans
-- **Reading stats:** streaks, weekly hours, per-document progress
-- **Appearance:** Light, Dark, Sepia, and Organic themes; 6 font choices; adjustable size
+- **Formats:** PDF, EPUB, DOCX, TXT, web links, photos, scans
+- **Stats:** streaks, weekly hours, per-document progress
+- **Appearance:** Light, Dark, Sepia, and Organic themes for document view
 - **Fully offline:** works without internet after initial model download
 
 ## Stack
@@ -35,7 +35,7 @@ Import a PDF, EPUB, DOCX, or TXT, then read it or listen to it. The TTS engine r
 
 ## Architecture notes
 
-Documents of all types (PDF, EPUB, DOCX) are extracted to plain text and rendered through a single `TxtViewer` component. The TTS pipeline segments text, generates WAV chunks ahead of the playback cursor via a buffer, and feeds them to a Track Player queue. Speed control is handled at the player layer (`setRate`), keeping generation fast regardless of playback speed.
+Documents of all types (PDF, EPUB, DOCX) are extracted to plain text and rendered through a single text viewer component. The TTS pipeline segments text, generates WAV chunks ahead of the playback cursor via a buffer, and feeds them to a queue. Speed control is handled at the player layer so generation is fast regardless of playback speed.
 
 ## Status
 
