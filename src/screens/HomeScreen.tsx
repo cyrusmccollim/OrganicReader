@@ -28,7 +28,7 @@ interface ImportOption {
 
 const importOptions: ImportOption[] = [
   { id: 'files',  label: 'Files',  IconComponent: Folder01Icon },
-  { id: 'type',   label: 'Type',   IconComponent: KeyboardIcon },
+  { id: 'text',   label: 'Type',   IconComponent: KeyboardIcon },
   { id: 'scan',   label: 'Scan',   IconComponent: Camera01Icon },
   { id: 'photos', label: 'Photos', IconComponent: Image01Icon },
   { id: 'link',   label: 'Link',   IconComponent: Link02Icon },

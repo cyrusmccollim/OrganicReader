@@ -1,6 +1,4 @@
-*.md
-!README.md
-.tmp-sherpa/
+.*
 
 # OSX
 #
