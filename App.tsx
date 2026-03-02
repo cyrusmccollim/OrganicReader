@@ -7,9 +7,13 @@ import ChatScreen from './src/screens/ChatScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import PlaybackScreen from './src/screens/PlaybackScreen';
+import DeletedFilesScreen from './src/screens/DeletedFilesScreen';
+import SignInScreen from './src/screens/SignInScreen';
 import { NavigationBar } from './src/components/NavigationBar';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
-import { LibraryProvider } from './src/context/LibraryContext';
+import { LibraryProvider, useLibrary } from './src/context/LibraryContext';
+import { AuthProvider } from './src/context/AuthContext';
+import { PlaybackProvider } from './src/context/PlaybackContext';
 import { useDocumentPicker } from './src/hooks/useDocumentPicker';
 import { LibraryFile } from './src/types';
 import { initializeAsyncStorage } from './src/services/AsyncStorageInit';
@@ -26,23 +30,40 @@ console.error = (...args: any[]) => {
   originalError(...args);
 };
 
-type Screen = 'home' | 'library' | 'chat' | 'profile' | 'add' | 'userProfile' | 'playback';
+type Screen =
+  | 'home'
+  | 'library'
+  | 'chat'
+  | 'profile'
+  | 'add'
+  | 'userProfile'
+  | 'playback'
+  | 'deletedFiles'
+  | 'signIn';
 
 function AppContent() {
   const { theme } = useTheme();
+  const { markOpened } = useLibrary();
   const { pickDocument } = useDocumentPicker();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [playbackFile, setPlaybackFile] = useState<LibraryFile | null>(null);
+  const [chatInitialFile, setChatInitialFile] = useState<{ id: string; name: string } | null>(null);
 
   const openFile = (file: LibraryFile) => {
+    markOpened(file.id);
     setPlaybackFile(file);
     setCurrentScreen('playback');
   };
 
   const handlePickFiles = async (): Promise<LibraryFile | null> => {
-    const file = await pickDocument();
-    return file;
+    return await pickDocument();
   };
+
+  const showNavBar =
+    currentScreen !== 'playback' &&
+    currentScreen !== 'userProfile' &&
+    currentScreen !== 'deletedFiles' &&
+    currentScreen !== 'signIn';
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -51,9 +72,15 @@ function AppContent() {
       case 'library':
         return <LibraryScreen onOpenFile={openFile} />;
       case 'chat':
-        return <ChatScreen />;
+        return <ChatScreen initialAttachment={chatInitialFile ?? undefined} />;
       case 'profile':
-        return <SettingsScreen onShowProfile={() => setCurrentScreen('userProfile')} />;
+        return (
+          <SettingsScreen
+            onShowProfile={() => setCurrentScreen('userProfile')}
+            onShowDeletedFiles={() => setCurrentScreen('deletedFiles')}
+            onShowSignIn={() => setCurrentScreen('signIn')}
+          />
+        );
       case 'userProfile':
         return <ProfileScreen onBack={() => setCurrentScreen('profile')} />;
       case 'playback':
@@ -61,16 +88,26 @@ function AppContent() {
           <PlaybackScreen
             file={playbackFile!}
             onBack={() => setCurrentScreen('library')}
+            onBringToChat={(f) => {
+              setChatInitialFile({ id: f.id, name: f.name });
+              setCurrentScreen('chat');
+            }}
+          />
+        );
+      case 'deletedFiles':
+        return <DeletedFilesScreen onBack={() => setCurrentScreen('profile')} />;
+      case 'signIn':
+        return (
+          <SignInScreen
+            onBack={() => setCurrentScreen('profile')}
+            onSignedIn={() => setCurrentScreen('profile')}
           />
         );
       case 'add':
-        return <HomeScreen onOpenFile={openFile} />;
       default:
         return <HomeScreen onOpenFile={openFile} />;
     }
   };
-
-  const showNavBar = currentScreen !== 'playback' && currentScreen !== 'userProfile';
 
   return (
     <SafeAreaProvider>
@@ -88,7 +125,11 @@ function AppContent() {
         {showNavBar && (
           <NavigationBar
             currentScreen={currentScreen as 'home' | 'library' | 'profile' | 'chat'}
-            onNavigate={setCurrentScreen}
+            onNavigate={(screen) => {
+              // Clear pre-attached file when navigating to chat via the tab bar (not Bring to Chat)
+              if (screen === 'chat') setChatInitialFile(null);
+              setCurrentScreen(screen);
+            }}
             onOpenFile={openFile}
             onPickFiles={handlePickFiles}
           />
@@ -100,7 +141,6 @@ function AppContent() {
 
 export function App() {
   useEffect(() => {
-    // Initialize AsyncStorage on app startup to detect if persistence is available
     initializeAsyncStorage().catch(() => {
       console.warn('AsyncStorage not available - app data will not persist');
     });
@@ -109,7 +149,11 @@ export function App() {
   return (
     <ThemeProvider>
       <LibraryProvider>
-        <AppContent />
+        <AuthProvider>
+          <PlaybackProvider>
+            <AppContent />
+          </PlaybackProvider>
+        </AuthProvider>
       </LibraryProvider>
     </ThemeProvider>
   );

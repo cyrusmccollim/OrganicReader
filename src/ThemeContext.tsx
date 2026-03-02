@@ -23,7 +23,7 @@ const ThemeContext = createContext<ThemeContextType>(null!);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Start with sensible defaults so the app renders correctly before the
-  // async storage load completes (typically < 50 ms — no visible flash).
+  // async storage load completes (typically < 50 ms - no visible flash).
   const [isDark, setIsDarkState] = useState(true);
   const [accent, setAccentState] = useState<AccentColor>(ACCENT_COLORS[0]);
 

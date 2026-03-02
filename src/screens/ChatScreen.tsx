@@ -11,9 +11,12 @@ import {
   Pressable,
   ScrollView,
   KeyboardAvoidingView,
+  Animated,
 } from 'react-native';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useTheme } from '../ThemeContext';
 import { Theme } from '../theme';
+import { useLibrary } from '../context/LibraryContext';
 import {
   ArrowUp01Icon,
   AiBrain01Icon,
@@ -21,7 +24,12 @@ import {
   Cancel01Icon,
   File01Icon,
   CheckmarkCircle01Icon,
+  BookOpen01Icon,
 } from 'hugeicons-react-native';
+
+interface Props {
+  initialAttachment?: { id: string; name: string };
+}
 
 interface Message {
   id: string;
@@ -31,10 +39,10 @@ interface Message {
 }
 
 const MOCK_RESPONSES = [
-  "Based on the documents in your library, I can help you explore that further.",
-  "I found relevant sections in your attached documents that might relate to your question.",
-  "Want me to summarize the key points?",
-  "I can cross-reference ideas across your documents. Just attach them!",
+  'Based on the documents in your library, I can help you explore that further.',
+  'I found relevant sections in your attached documents that might relate to your question.',
+  'Want me to summarize the key points?',
+  'I can cross-reference ideas across your documents. Just attach them!',
 ];
 
 const initialMessages: Message[] = [
@@ -45,13 +53,18 @@ const initialMessages: Message[] = [
   },
 ];
 
-export function ChatScreen() {
+export function ChatScreen({ initialAttachment }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { files } = useLibrary();
+
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<{ id: string; name: string }[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<{ id: string; name: string }[]>(
+    () => initialAttachment ? [initialAttachment] : []
+  );
   const [showPicker, setShowPicker] = useState(false);
+  const { translateY: pickerTY, panResponder: pickerPR } = useSwipeToDismiss(() => setShowPicker(false));
 
   const listRef = useRef<FlatList>(null);
   const aiResponseIndex = useRef(0);
@@ -64,7 +77,7 @@ export function ChatScreen() {
       id: Date.now().toString(),
       role: 'user',
       text: text || (attachedFiles.length > 0 ? `Attached ${attachedFiles.length} file(s)` : ''),
-      attachments: attachedFiles.map(f => f.name),
+      attachments: attachedFiles.map((f) => f.name),
     };
 
     const aiMsg: Message = {
@@ -74,23 +87,25 @@ export function ChatScreen() {
     };
     aiResponseIndex.current += 1;
 
-    setMessages(prev => [...prev, userMsg, aiMsg]);
+    setMessages((prev) => [...prev, userMsg, aiMsg]);
     setInput('');
     setAttachedFiles([]);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   const removeAttachment = (id: string) => {
-    setAttachedFiles(prev => prev.filter(f => f.id !== id));
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const toggleAttachment = (file: { id: string; name: string }) => {
-    if (attachedFiles.find(f => f.id === file.id)) {
+    if (attachedFiles.find((f) => f.id === file.id)) {
       removeAttachment(file.id);
     } else {
-      setAttachedFiles(prev => [...prev, file]);
+      setAttachedFiles((prev) => [...prev, file]);
     }
   };
+
+  const isAttached = (id: string) => attachedFiles.some((f) => f.id === id);
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
@@ -129,9 +144,11 @@ export function ChatScreen() {
     );
   };
 
+  const canSend = input.trim().length > 0 || attachedFiles.length > 0;
+
   return (
     <View style={styles.outer}>
-      {/* Header — fixed above the keyboard-avoiding area */}
+      {/* Header - fixed above the keyboard-avoiding area */}
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>Chat</Text>
         <View style={styles.aiBadge}>
@@ -140,15 +157,6 @@ export function ChatScreen() {
         </View>
       </View>
 
-      {/*
-        KeyboardAvoidingView contains only the message list + input bar.
-        On iOS, behavior="padding" adds bottom padding equal to keyboard height.
-        On Android, adjustResize in the manifest handles window shrinking;
-        behavior="height" tells KAV to also shrink its own height as a fallback.
-        keyboardVerticalOffset defaults to 0, which is correct here because
-        the KAV's frame position is already measured in absolute screen coords
-        and the overlap calculation accounts for the header above it.
-      */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -156,7 +164,7 @@ export function ChatScreen() {
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={m => m.id}
+          keyExtractor={(m) => m.id}
           contentContainerStyle={styles.list}
           renderItem={renderMessage}
           style={{ flex: 1 }}
@@ -164,7 +172,7 @@ export function ChatScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
 
-        {/* Input bar — direct child of KAV, always sits above the keyboard */}
+        {/* Input bar - direct child of KAV */}
         <View style={styles.inputContainer}>
           {attachedFiles.length > 0 && (
             <View style={styles.attachmentBar}>
@@ -173,7 +181,7 @@ export function ChatScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.attachmentScroll}
               >
-                {attachedFiles.map(file => (
+                {attachedFiles.map((file) => (
                   <View key={file.id} style={styles.attachmentPill}>
                     <File01Icon size={14} color={theme.colors.primary} />
                     <Text style={styles.attachmentPillText} numberOfLines={1}>
@@ -203,46 +211,94 @@ export function ChatScreen() {
               selectionColor={theme.colors.primary}
             />
             <TouchableOpacity
-              style={[
-                styles.sendBtn,
-                {
-                  backgroundColor:
-                    input.trim() || attachedFiles.length > 0
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                },
-              ]}
+              style={[styles.sendBtn, { backgroundColor: canSend ? theme.colors.primary : theme.colors.border }]}
               onPress={send}
-              disabled={!input.trim() && attachedFiles.length === 0}
+              disabled={!canSend}
             >
               <ArrowUp01Icon
                 size={20}
-                color={
-                  input.trim() || attachedFiles.length > 0
-                    ? theme.colors.darkBg
-                    : theme.colors.textSecondary
-                }
+                color={canSend ? theme.colors.darkBg : theme.colors.textSecondary}
               />
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
 
-      {/* Attachment Picker Modal */}
-      <Modal visible={showPicker} transparent animationType="slide">
+      {/* Attachment Picker Modal - real library files */}
+      <Modal visible={showPicker} transparent animationType="slide" onRequestClose={() => setShowPicker(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Attach Documents</Text>
+          <Animated.View
+            style={[styles.modalSheet, { transform: [{ translateY: pickerTY }] }]}
+            {...pickerPR.panHandlers}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.modalHandleWrap}>
+              <View style={styles.modalHandle} />
+            </View>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Attach Documents</Text>
+              {attachedFiles.length > 0 && (
+                <Text style={styles.selectedCount}>{attachedFiles.length} selected</Text>
+              )}
+            </View>
+
+            {files.length === 0 ? (
+              <View style={styles.emptyState}>
+                <BookOpen01Icon size={40} color={theme.colors.textSecondary} />
+                <Text style={styles.emptyText}>No documents in your library yet.</Text>
+                <Text style={styles.emptySubtext}>Import a file from the Home screen first.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={files}
+                keyExtractor={(f) => f.id}
+                style={styles.pickerList}
+                scrollEnabled={files.length > 5}
+                renderItem={({ item }) => {
+                  const selected = isAttached(item.id);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.pickerItem, selected && styles.pickerItemSelected]}
+                      onPress={() => toggleAttachment({ id: item.id, name: item.name })}
+                      activeOpacity={0.75}
+                    >
+                      <View
+                        style={[
+                          styles.itemIconContainer,
+                          { backgroundColor: selected ? `${theme.colors.primary}22` : theme.colors.darkerBg },
+                        ]}
+                      >
+                        <Text style={styles.pickerEmoji}>{item.thumbnail}</Text>
+                      </View>
+                      <View style={styles.itemTextContainer}>
+                        <Text style={[styles.pickerText, { color: selected ? theme.colors.primary : theme.colors.textPrimary }]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.itemSubtext}>{item.type} · {item.dateAdded}</Text>
+                      </View>
+                      {selected ? (
+                        <CheckmarkCircle01Icon size={22} color={theme.colors.primary} />
+                      ) : (
+                        <View style={[styles.checkCircle, { borderColor: theme.colors.border }]} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: theme.colors.border }]} />}
+              />
+            )}
+
             <TouchableOpacity
               style={[styles.doneBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => setShowPicker(false)}
             >
               <Text style={[styles.doneBtnText, { color: theme.colors.darkBg }]}>
-                Confirm Selection ({attachedFiles.length})
+                {attachedFiles.length > 0
+                  ? `Attach ${attachedFiles.length} Document${attachedFiles.length > 1 ? 's' : ''}`
+                  : 'Done'}
               </Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </Pressable>
       </Modal>
     </View>
@@ -258,7 +314,7 @@ function makeStyles(theme: Theme) {
       paddingTop: spacing.xl,
       paddingBottom: spacing.md,
       paddingHorizontal: spacing.lg,
-      borderBottomWidth: 1,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
       gap: 4,
     },
@@ -307,10 +363,7 @@ function makeStyles(theme: Theme) {
       borderColor: colors.border,
       borderBottomLeftRadius: 4,
     },
-    bubbleUser: {
-      backgroundColor: colors.primary,
-      borderBottomRightRadius: 4,
-    },
+    bubbleUser: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
     bubbleText: { fontSize: 14, color: colors.textPrimary, lineHeight: 20 },
     bubbleTextUser: { color: colors.darkBg },
     bubbleAttachments: { gap: 4, marginBottom: 6 },
@@ -324,14 +377,11 @@ function makeStyles(theme: Theme) {
     attachmentText: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
     // Input
     inputContainer: {
-      borderTopWidth: 1,
+      borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
       backgroundColor: colors.darkBg,
     },
-    attachmentBar: {
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.sm,
-    },
+    attachmentBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
     attachmentScroll: { gap: 8 },
     attachmentPill: {
       flexDirection: 'row',
@@ -352,12 +402,7 @@ function makeStyles(theme: Theme) {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
     },
-    attachBtn: {
-      width: 40,
-      height: 40,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
+    attachBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
     input: {
       flex: 1,
       backgroundColor: colors.surface,
@@ -389,37 +434,53 @@ function makeStyles(theme: Theme) {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
-      padding: 20,
+      paddingHorizontal: spacing.lg,
+      paddingTop: 0,
+      paddingBottom: 40,
+      maxHeight: '80%',
+    },
+    modalHandleWrap: {
+      paddingTop: 14, paddingBottom: 8,
+      alignItems: 'center',
     },
     modalHandle: {
       width: 40,
       height: 4,
       backgroundColor: colors.border,
       borderRadius: 2,
-      alignSelf: 'center',
-      marginBottom: 16,
     },
-    modalTitle: {
-      fontSize: 17,
-      fontWeight: '700',
-      color: colors.textPrimary,
-      marginBottom: 16,
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
     },
+    modalTitle: { fontSize: 17, fontWeight: '700', color: colors.textPrimary },
+    selectedCount: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.primary,
+      backgroundColor: `${colors.primary}18`,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
+    pickerList: { maxHeight: 360 },
     pickerItem: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingVertical: 12,
-      paddingHorizontal: 12,
-      gap: 12,
-      borderRadius: 12,
-      marginBottom: 8,
+      paddingHorizontal: spacing.md,
+      gap: spacing.md,
+      borderRadius: borderRadius.md,
       backgroundColor: colors.surfaceHigh,
       borderWidth: 1,
       borderColor: colors.border,
+      marginVertical: 3,
     },
     pickerItemSelected: {
       borderColor: colors.primary,
-      backgroundColor: colors.surface,
+      backgroundColor: `${colors.primary}10`,
     },
     itemIconContainer: {
       width: 44,
@@ -428,22 +489,22 @@ function makeStyles(theme: Theme) {
       justifyContent: 'center',
       alignItems: 'center',
     },
+    pickerEmoji: { fontSize: 22 },
     itemTextContainer: { flex: 1, gap: 2 },
+    pickerText: { fontSize: 14, fontWeight: '600' },
     itemSubtext: { fontSize: 11, color: colors.textSecondary },
     checkCircle: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
       borderWidth: 1.5,
-      borderColor: colors.border,
-      justifyContent: 'center',
-      alignItems: 'center',
     },
-    pickerEmoji: { fontSize: 20 },
-    pickerText: { fontSize: 15, color: colors.textPrimary, fontWeight: '600' },
+    sep: { height: StyleSheet.hairlineWidth },
+    emptyState: { alignItems: 'center', paddingVertical: 40, gap: spacing.sm },
+    emptyText: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
+    emptySubtext: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
     doneBtn: {
-      marginTop: 12,
-      marginBottom: 32,
+      marginTop: spacing.md,
       paddingVertical: 14,
       borderRadius: borderRadius.md,
       alignItems: 'center',
@@ -454,7 +515,6 @@ function makeStyles(theme: Theme) {
       elevation: 4,
     },
     doneBtnText: { fontSize: 16, fontWeight: '700' },
-    pickerList: { maxHeight: 400 },
   });
 }
 

@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { View, Modal, StyleSheet, Text, TouchableOpacity, FlatList } from 'react-native';
+import { View, Modal, StyleSheet, Text, TouchableOpacity, FlatList, Animated, Pressable } from 'react-native';
 import { useTheme } from '../ThemeContext';
 import { Theme } from '../theme';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import {
   Folder01Icon,
   CloudIcon,
@@ -37,6 +38,7 @@ export default function CreateModal({
 }) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { translateY, panResponder } = useSwipeToDismiss(onClose);
 
   const handlePress = (id: string) => {
     onClose();
@@ -48,26 +50,36 @@ export default function CreateModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Add Document</Text>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <Animated.View
+          style={[styles.sheet, { transform: [{ translateY }] }]}
+          {...panResponder.panHandlers}
+          onStartShouldSetResponder={() => true}
+        >
+          <View style={styles.handleWrap}>
+            <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
+          </View>
+          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Add Document</Text>
           <FlatList
             data={importOptions}
             keyExtractor={i => i.id}
             scrollEnabled={false}
             renderItem={({ item }) => (
-              <TouchableOpacity style={styles.row} onPress={() => handlePress(item.id)}>
-                <View style={styles.iconBox}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => handlePress(item.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.iconBox, { backgroundColor: theme.colors.darkBg }]}>
                   <item.IconComponent size={20} color={theme.colors.primary} />
                 </View>
-                <Text style={styles.rowLabel}>{item.label}</Text>
+                <Text style={[styles.rowLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
               </TouchableOpacity>
             )}
-            ItemSeparatorComponent={() => <View style={styles.sep} />}
+            ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: theme.colors.border }]} />}
           />
-        </View>
-      </TouchableOpacity>
+        </Animated.View>
+      </Pressable>
     </Modal>
   );
 }
@@ -85,21 +97,22 @@ function makeStyles(theme: Theme) {
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       paddingHorizontal: spacing.lg,
+      paddingTop: 0,
       paddingBottom: 32,
+    },
+    handleWrap: {
       paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+      alignItems: 'center',
     },
     handle: {
-      width: 36,
+      width: 40,
       height: 4,
       borderRadius: 2,
-      backgroundColor: colors.border,
-      alignSelf: 'center',
-      marginBottom: spacing.md,
     },
     title: {
       fontSize: 18,
       fontWeight: '700',
-      color: colors.textPrimary,
       marginBottom: spacing.md,
     },
     row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
@@ -107,12 +120,11 @@ function makeStyles(theme: Theme) {
       width: 42,
       height: 42,
       borderRadius: borderRadius.sm,
-      backgroundColor: colors.darkBg,
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: spacing.md,
     },
-    rowLabel: { fontSize: 15, color: colors.textPrimary, fontWeight: '500' },
-    sep: { height: 1, backgroundColor: colors.border },
+    rowLabel: { fontSize: 15, fontWeight: '500' },
+    sep: { height: StyleSheet.hairlineWidth },
   });
 }

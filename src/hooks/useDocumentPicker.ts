@@ -74,6 +74,7 @@ export function useDocumentPicker() {
         thumbnail: thumbnailForType(fileType),
         dateAdded: formatDate(new Date()),
         progress:  0,
+        bookmarks: [],
         uri:       permanentUri,
       };
 
