@@ -700,6 +700,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           }
           setShowEdit(false);
           setEditText(null);
+          setViewerRefreshKey(k => k + 1); // Refresh the viewer
         }}
       />
     </View>
