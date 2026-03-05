@@ -25,6 +25,7 @@ const FONT_MAP: Record<string, string | undefined> = {
 interface Props {
   uri?: string;
   text?: string;
+  refreshKey?: number;
   onSearchResult?: (count: number, current: number) => void;
   onViewerMessage?: (msg: Record<string, any>) => void;
 }
@@ -33,7 +34,7 @@ function escapeRegex(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp, onSearchResult, onViewerMessage }, ref) => {
+export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp, refreshKey, onSearchResult, onViewerMessage }, ref) => {
   const { theme } = useTheme();
   const { appearance } = usePlayback();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -59,7 +60,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
     RNFS.readFile(path, 'utf8')
       .then(t => { setContent(t); onViewerMessage?.({ type: 'ready' }); })
       .catch(e => setError('Could not read file: ' + e.message));
-  }, [uri, textProp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compute match positions
   const matchPositions = useMemo(() => {

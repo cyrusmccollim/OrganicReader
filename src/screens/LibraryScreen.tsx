@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   ScrollView,
@@ -101,9 +101,23 @@ export function LibraryScreen({ onOpenFile }: { onOpenFile?: (file: LibraryFile)
   const [search, setSearch] = useState('');
   const [selectedFile, setSelectedFile] = useState<LibraryFile | null>(null);
   const [showOptions, setShowOptions] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const closeOptions = () => { setShowOptions(false); setSelectedFile(null); };
   const { translateY: optionsTY, panResponder: optionsPR } = useSwipeToDismiss(closeOptions);
+
+  // Show toast helper
+  const showToast = (message: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMessage(message);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => setToastMessage(null));
+  };
 
   const filtered = useMemo(
     () =>
@@ -120,18 +134,13 @@ export function LibraryScreen({ onOpenFile }: { onOpenFile?: (file: LibraryFile)
     setShowOptions(true);
   };
 
-  const handleDelete = () => {
-    // Close options sheet first; show confirm dialog in onDismiss to avoid overlap
-    setShowOptions(false);
-    // setTimeout to wait for modal dismiss animation (slide animationType ~300ms)
-    setTimeout(() => setShowDeleteConfirm(true), 350);
-  };
-
-  const confirmDelete = async () => {
+  const handleDelete = async () => {
     if (!selectedFile) return;
-    setShowDeleteConfirm(false);
+    const fileName = selectedFile.name;
+    setShowOptions(false);
     await softDeleteFile(selectedFile);
     setSelectedFile(null);
+    showToast(`"${fileName}" moved to Deleted Files`);
   };
 
   return (
@@ -251,36 +260,12 @@ export function LibraryScreen({ onOpenFile }: { onOpenFile?: (file: LibraryFile)
         </Pressable>
       </Modal>
 
-      {/* Delete Confirmation */}
-      <Modal visible={showDeleteConfirm} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(false)}>
-        <Pressable style={styles.confirmOverlay} onPress={() => setShowDeleteConfirm(false)}>
-          <View style={[styles.confirmBox, { backgroundColor: theme.colors.surface }]}>
-            <View style={[styles.confirmIconWrap, { backgroundColor: '#e0555518' }]}>
-              <Delete01Icon size={28} color="#e05555" />
-            </View>
-            <Text style={[styles.confirmTitle, { color: theme.colors.textPrimary }]}>
-              Move to Deleted Files?
-            </Text>
-            <Text style={[styles.confirmBody, { color: theme.colors.textSecondary }]}>
-              "{selectedFile?.name}" will be moved to Deleted Files. You can restore it anytime.
-            </Text>
-            <View style={styles.confirmActions}>
-              <TouchableOpacity
-                style={[styles.confirmCancel, { backgroundColor: theme.colors.darkerBg }]}
-                onPress={() => setShowDeleteConfirm(false)}
-              >
-                <Text style={[styles.confirmCancelText, { color: theme.colors.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmDelete}
-                onPress={confirmDelete}
-              >
-                <Text style={styles.confirmDeleteText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
+      {/* Toast */}
+      {toastMessage && (
+        <Animated.View style={[styles.toast, { opacity: toastOpacity, backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.toastText, { color: theme.colors.textPrimary }]}>{toastMessage}</Text>
+        </Animated.View>
+      )}
     </>
   );
 }
@@ -410,47 +395,23 @@ function makeStyles(theme: Theme) {
       paddingVertical: 14,
     },
     optionLabel: { fontSize: 16, fontWeight: '500' },
-    // Confirm dialog
-    confirmOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: spacing.xl,
-    },
-    confirmBox: {
-      borderRadius: 20,
-      padding: spacing.xl,
-      width: '100%',
-      maxWidth: 340,
-    },
-    confirmIconWrap: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      justifyContent: 'center',
-      alignItems: 'center',
-      alignSelf: 'center',
-      marginBottom: spacing.lg,
-    },
-    confirmTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: spacing.sm },
-    confirmBody: { fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: spacing.xl },
-    confirmActions: { flexDirection: 'row', gap: spacing.sm },
-    confirmCancel: {
-      flex: 1,
-      paddingVertical: 13,
+    // Toast
+    toast: {
+      position: 'absolute',
+      bottom: 100,
+      left: '50%',
+      transform: [{ translateX: -150 }],
+      width: 300,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
       borderRadius: borderRadius.md,
-      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 5,
     },
-    confirmCancelText: { fontSize: 15, fontWeight: '600' },
-    confirmDelete: {
-      flex: 1,
-      paddingVertical: 13,
-      borderRadius: borderRadius.md,
-      alignItems: 'center',
-      backgroundColor: '#e05555',
-    },
-    confirmDeleteText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
+    toastText: { fontSize: 14, fontWeight: '500', textAlign: 'center' },
   });
 }
 

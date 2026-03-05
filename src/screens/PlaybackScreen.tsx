@@ -106,6 +106,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const [showEdit, setShowEdit] = useState(false);
   const [editText, setEditText] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  const [viewerRefreshKey, setViewerRefreshKey] = useState(0);
 
   // Live file data from context (avoids stale prop snapshot for bookmarks)
   const liveFile = useMemo(
@@ -379,6 +380,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
         <DocumentViewer
           ref={documentRef}
           file={file}
+          refreshKey={viewerRefreshKey}
           onSearchResult={handleSearchResult}
           onViewerMessage={handleViewerMessage}
         />

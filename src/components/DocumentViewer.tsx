@@ -7,11 +7,12 @@ import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extra
 
 interface Props {
   file: LibraryFile;
+  refreshKey?: number;
   onSearchResult?: (count: number, current: number) => void;
   onViewerMessage?: (msg: Record<string, any>) => void;
 }
 
-export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, onSearchResult, onViewerMessage }, ref) => {
+export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, refreshKey, onSearchResult, onViewerMessage }, ref) => {
   const { theme } = useTheme();
   const [extractedText, setExtractedText] = useState<string | undefined>(undefined);
   const [extracting, setExtracting] = useState(false);
@@ -47,7 +48,7 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, onSearchR
   }
 
   if (file.type === 'TXT') {
-    return <TxtViewer ref={ref} uri={file.uri} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+    return <TxtViewer ref={ref} uri={file.uri} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
   }
 
   if (extractError) {
@@ -66,7 +67,7 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, onSearchR
     );
   }
 
-  return <TxtViewer ref={ref} text={extractedText} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+  return <TxtViewer ref={ref} text={extractedText} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
 });
 
 const styles = StyleSheet.create({
