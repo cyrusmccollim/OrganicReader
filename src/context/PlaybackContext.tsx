@@ -13,7 +13,7 @@ export const FONT_FAMILIES: Record<ReaderFont, string | undefined> = {
   Sans:    Platform.OS === 'ios' ? 'AvenirNext-Regular' : 'sans-serif',
   Mono:    Platform.OS === 'ios' ? 'Menlo'              : 'monospace',
   Modern:  Platform.OS === 'ios' ? 'Futura-Medium'      : 'sans-serif-condensed',
-  Classic: Platform.OS === 'ios' ? 'Palatino-Roman'     : 'serif',
+  Classic: Platform.OS === 'ios' ? 'Palatino-Roman'     : 'serif-monospace',
 };
 
 export interface AppearanceSettings {
