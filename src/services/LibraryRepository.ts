@@ -23,6 +23,8 @@ export interface ILibraryRepository {
   saveAll(files: LibraryFile[]): Promise<void>;
   /** Copy a picked cache file into permanent app storage and return its file:// URI. */
   persistFile(cacheUri: string, originalName: string): Promise<string>;
+  /** Save text content directly to a file and return its file:// URI. */
+  persistTextContent(content: string, filename: string): Promise<string>;
   /** Soft-delete: move metadata to trash, keep file on disk. */
   softDelete(file: LibraryFile, currentFiles: LibraryFile[]): Promise<{ active: LibraryFile[]; deleted: DeletedFile[] }>;
   /** Load the deleted-files list from storage. */
@@ -56,6 +58,13 @@ async function persistFile(cacheUri: string, originalName: string): Promise<stri
   const ext = originalName.split('.').pop() ?? 'bin';
   const dest = `${DOCS_DIR}/${Date.now()}.${ext}`;
   await RNFS.copyFile(cacheUri.replace(/^file:\/\//, ''), dest);
+  return `file://${dest}`;
+}
+
+async function persistTextContent(content: string, filename: string): Promise<string> {
+  await ensureDocsDir();
+  const dest = `${DOCS_DIR}/${Date.now()}.txt`;
+  await RNFS.writeFile(dest, content, 'utf8');
   return `file://${dest}`;
 }
 
@@ -173,6 +182,7 @@ async function emptyTrash(deletedFiles: DeletedFile[]): Promise<void> {
 
 export const LibraryRepository: ILibraryRepository = {
   persistFile,
+  persistTextContent,
   loadAll,
   saveAll,
   softDelete,
