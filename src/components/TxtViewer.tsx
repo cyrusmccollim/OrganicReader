@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback, forwardRef, u
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import RNFS from 'react-native-fs';
 import { useTheme } from '../ThemeContext';
-import { usePlayback } from '../context/PlaybackContext';
+import { usePlayback, FONT_FAMILIES } from '../context/PlaybackContext';
 import { Theme } from '../theme';
 import { ViewerHandle } from '../types';
 
@@ -10,16 +10,7 @@ const THEME_COLORS: Record<string, { bg: string; text: string }> = {
   light:   { bg: '#ffffff', text: '#1a1a1a' },
   dark:    { bg: '#121212', text: '#e0e0e0' },
   sepia:   { bg: '#f4ecd8', text: '#5b4636' },
-  organic: { bg: '#0a1410', text: '#c8e6d0' },
-};
-
-const FONT_MAP: Record<string, string | undefined> = {
-  System:  undefined,
-  Serif:   'Georgia',
-  Sans:    'Arial',
-  Mono:    'Courier New',
-  Modern:  'Helvetica',
-  Classic: 'Times New Roman',
+  organic: { bg: '#0d1a0e', text: '#c4d8b4' },
 };
 
 interface Props {
@@ -40,7 +31,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const readerTheme = THEME_COLORS[appearance.theme] ?? THEME_COLORS.organic;
-  const fontFamily  = FONT_MAP[appearance.fontStyle];
+  const fontFamily  = FONT_FAMILIES[appearance.fontStyle];
   const fontSize    = appearance.fontSize;
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -19,7 +19,7 @@ import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { DocumentViewer } from '../components/DocumentViewer';
 import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
-import { usePlayback, ReaderTheme, ReaderFont } from '../context/PlaybackContext';
+import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES } from '../context/PlaybackContext';
 import { useTextFileCreator } from '../hooks/useTextFileCreator';
 import {
   ArrowDown01Icon,
@@ -58,7 +58,7 @@ const THEMES: { id: ReaderTheme; label: string; color: string; text: string }[] 
   { id: 'light',   label: 'Light',   color: '#ffffff', text: '#1a1a1a' },
   { id: 'dark',    label: 'Dark',    color: '#121212', text: '#e0e0e0' },
   { id: 'sepia',   label: 'Sepia',   color: '#f4ecd8', text: '#5b4636' },
-  { id: 'organic', label: 'Organic', color: '#0a1410', text: '#c8e6d0' },
+  { id: 'organic', label: 'Organic', color: '#0d1a0e', text: '#c4d8b4' },
 ];
 
 const FONT_S_MIN = 12;
@@ -670,7 +670,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                     style={[styles.fontCard, { backgroundColor: theme.colors.darkerBg },
                       appearance.fontStyle === f && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '11' }]}
                     onPress={() => updateAppearance({ fontStyle: f })}>
-                    <Text style={[styles.fontPreview, { color: appearance.fontStyle === f ? theme.colors.primary : theme.colors.textPrimary }]}>Aa</Text>
+                    <Text style={[styles.fontPreview, { color: appearance.fontStyle === f ? theme.colors.primary : theme.colors.textPrimary, fontFamily: FONT_FAMILIES[f] }]}>Aa</Text>
                     <Text style={[styles.fontLabel, { color: theme.colors.textSecondary }]}>{f}</Text>
                   </TouchableOpacity>
                 ))}
