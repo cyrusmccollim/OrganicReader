@@ -48,9 +48,10 @@ function getGreeting() {
 interface Props {
   onOpenFile?: (file: LibraryFile) => void;
   onSelectOption?: (id: string) => void;
+  onNavigateToProfile?: () => void;
 }
 
-export function HomeScreen({ onOpenFile, onSelectOption }: Props) {
+export function HomeScreen({ onOpenFile, onSelectOption, onNavigateToProfile }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { files } = useLibrary();
@@ -89,9 +90,9 @@ export function HomeScreen({ onOpenFile, onSelectOption }: Props) {
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.appName}>{user?.name?.split(' ')[0] || 'Reader'}</Text>
         </View>
-        <View style={styles.avatarBubble}>
+        <TouchableOpacity style={styles.avatarBubble} onPress={onNavigateToProfile} activeOpacity={0.8}>
           <Text style={styles.avatarInitials}>{getUserInitials(user?.name)}</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Streak + Stats row */}

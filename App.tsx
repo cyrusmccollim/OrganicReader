@@ -139,7 +139,7 @@ function AppContent() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
-        return <HomeScreen onOpenFile={openFile} onSelectOption={handleImportOption} />;
+        return <HomeScreen onOpenFile={openFile} onSelectOption={handleImportOption} onNavigateToProfile={() => setCurrentScreen('userProfile')} />;
       case 'library':
         return <LibraryScreen onOpenFile={openFile} />;
       case 'chat':
