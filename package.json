@@ -19,7 +19,8 @@
     "react-native-fs": "^2.20.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-svg": "^15.15.3",
-    "react-native-webview": "^13.16.1"
+    "react-native-webview": "^13.16.1",
+    "unpdf": "^1.4.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -37,6 +38,7 @@
     "@types/react-test-renderer": "^19.1.0",
     "epubjs": "^0.3.93",
     "eslint": "^8.19.0",
+    "fflate": "^0.8.2",
     "jest": "^29.6.3",
     "mammoth": "^1.11.0",
     "pdfjs-dist": "^5.4.624",
