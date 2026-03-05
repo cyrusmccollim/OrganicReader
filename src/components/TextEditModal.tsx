@@ -10,7 +10,7 @@ interface Props {
   initialTitle?: string;
   initialContent: string;
   onClose: () => void;
-  onSave: (title: string, content: string) => void;
+  onSave: (title: string, content: string) => void | Promise<void>;
 }
 
 export function TextEditModal({ visible, initialTitle = '', initialContent, onClose, onSave }: Props) {
@@ -26,9 +26,9 @@ export function TextEditModal({ visible, initialTitle = '', initialContent, onCl
     }
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (content.trim()) {
-      onSave(title.trim() || 'Untitled', content);
+      await onSave(title.trim() || 'Untitled', content);
       onClose();
     }
   };
