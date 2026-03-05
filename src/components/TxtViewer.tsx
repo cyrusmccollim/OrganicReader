@@ -10,16 +10,16 @@ const THEME_COLORS: Record<string, { bg: string; text: string }> = {
   light:   { bg: '#ffffff', text: '#1a1a1a' },
   dark:    { bg: '#121212', text: '#e0e0e0' },
   sepia:   { bg: '#f4ecd8', text: '#5b4636' },
-  organic: { bg: '#0d1a12', text: '#d1e8d5' },
+  organic: { bg: '#0a1410', text: '#c8e6d0' },
 };
 
 const FONT_MAP: Record<string, string | undefined> = {
   System:  undefined,
   Serif:   'Georgia',
-  Sans:    undefined,
+  Sans:    'Arial',
   Mono:    'Courier New',
-  Modern:  undefined,
-  Classic: 'Georgia',
+  Modern:  'Helvetica',
+  Classic: 'Times New Roman',
 };
 
 interface Props {
