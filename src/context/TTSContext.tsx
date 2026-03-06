@@ -74,7 +74,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   // Active segment tracking
   const activeTimingRef = useRef<SentenceTiming | null>(null);
   // Position within CURRENT audio segment (ms), updated by AudioProgress events.
-  // NOT state — no re-renders.
+  // NOT state -- no re-renders.
   const positionWithinFileRef = useRef(0);
 
   const progressSubRef = useRef<EmitterSubscription | null>(null);
@@ -89,7 +89,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     refreshDownloadedModels();
   }, [refreshDownloadedModels]);
 
-  // Subscribe to AudioProgress — ONLY update positionWithinFileRef (no setState = no re-renders)
+  // Subscribe to AudioProgress -- ONLY update positionWithinFileRef (no setState = no re-renders)
   useEffect(() => {
     progressSubRef.current?.remove();
     progressSubRef.current = SimpleAudio.onProgress((posMs) => {
@@ -109,7 +109,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const onSegmentReady = useCallback((segment: BufferSegment) => {
-    // Update timings ref (internal use only — not exposed in context)
+    // Update timings ref (internal use only -- not exposed in context)
     timingsRef.current = [...timingsRef.current, segment.timing];
 
     activeTimingRef.current = segment.timing;
@@ -198,7 +198,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   const startBuffer = useCallback((fromIndex: number) => {
     flushBuffer();
     timingsRef.current = [];
-    // Don't reset totalEstimatedMs on seek — keep the estimate we computed from first segment
+    // Don't reset totalEstimatedMs on seek -- keep the estimate we computed from first segment
 
     const sents = sentencesRef.current;
     bufferRef.current = new TTSBuffer(

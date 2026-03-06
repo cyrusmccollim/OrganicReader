@@ -106,7 +106,7 @@ export function ProfileScreen({ onBack }: Props) {
               <Edit01Icon size={16} color={theme.colors.primary} />
               <Text style={styles.rowLabel}>Name</Text>
             </View>
-            <Text style={styles.rowValue}>{name || '—'}</Text>
+            <Text style={styles.rowValue}>{name || '--'}</Text>
           </TouchableOpacity>
           <View style={styles.sep} />
           <View style={styles.row}>
@@ -114,7 +114,7 @@ export function ProfileScreen({ onBack }: Props) {
               <Mail01Icon size={16} color={theme.colors.primary} />
               <Text style={styles.rowLabel}>Email</Text>
             </View>
-            <Text style={styles.rowValue} numberOfLines={1}>{email || '—'}</Text>
+            <Text style={styles.rowValue} numberOfLines={1}>{email || '--'}</Text>
           </View>
           <View style={styles.sep} />
           <View style={styles.row}>

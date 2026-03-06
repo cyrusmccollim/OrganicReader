@@ -9,7 +9,7 @@ export interface GeneratedSegment {
 
 let segmentCounter = 0;
 
-// Speed is NOT passed to generateAndSave — it's handled by TrackPlayer.setRate
+// Speed is NOT passed to generateAndSave -- it's handled by TrackPlayer.setRate
 // Speaker changes require re-initializing the model via ModelRegistry
 export async function synthesize(
   text: string,

@@ -46,7 +46,7 @@ async function downloadFile(
     throw new Error(`HTTP ${result.statusCode} fetching ${url}`);
   }
 
-  // Validate file size — catches truncated downloads and HTML error pages
+  // Validate file size -- catches truncated downloads and HTML error pages
   const stat = await RNFS.stat(dest);
   if (Number(stat.size) < minBytes) {
     await RNFS.unlink(dest).catch(() => {});
@@ -55,14 +55,14 @@ async function downloadFile(
 }
 
 async function ensureEspeakData(onProgress?: (fraction: number) => void): Promise<void> {
-  // Already installed — verify the directory actually contains files
+  // Already installed -- verify the directory actually contains files
   if (await RNFS.exists(ESPEAK_DIR)) {
     const items = await RNFS.readDir(ESPEAK_DIR).catch(() => []);
     if (items.length > 0) return;
   }
 
   const archive = `${MODELS_DIR}/espeak-ng-data.zip`;
-  // Always re-download — a leftover zip is likely corrupt if the dir is missing
+  // Always re-download -- a leftover zip is likely corrupt if the dir is missing
   await RNFS.unlink(archive).catch(() => {});
   await downloadFile(ESPEAK_ZIP_URL, archive, 500_000, onProgress);
 

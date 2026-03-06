@@ -15,7 +15,7 @@ const FR_WORDS = /\b(le|la|les|de|du|un|une|des|et|est|en|qui|que|pour|dans|sur|
 const DE_WORDS = /\b(der|die|das|und|ist|in|von|zu|mit|auf|für|den|dem|ein|eine|ich|sie|er|wir|auch|an|sich|wird)\b/gi;
 const ES_WORDS = /\b(los|las|del|una|que|para|con|por|como|pero|más|también|muy|este|esta|cuando|porque|donde|entre|desde|hasta|sobre|después|antes|tiene|están|hacer|puede)\b/gi;
 const IT_WORDS = /\b(del|della|delle|degli|che|per|con|sono|come|questo|questa|dopo|quando|perché|anche|molto|fare|può|hanno|della|essere|aveva|tutto)\b/gi;
-// Avoid short words shared with English (o, a, as, de, etc.) — use more distinctive PT words
+// Avoid short words shared with English (o, a, as, de, etc.) -- use more distinctive PT words
 const PT_WORDS = /\b(uma|para|com|por|sua|como|mas|não|este|esta|isso|mais|tem|são|ele|ela|nos|você|muito|depois|quando|porque|também|ainda|já)\b/gi;
 // Distinctively Dutch words that don't heavily overlap with English/German
 const NL_WORDS = /\b(zijn|hebben|worden|kunnen|mogen|moeten|zij|hun|hen|jullie|mensen|dag|week|jaar|maar|ook|heel|gewoon|eigenlijk|misschien|heb|heeft|had|waren|wordt)\b/gi;

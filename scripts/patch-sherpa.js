@@ -23,7 +23,7 @@ if (src.includes('fun initializeTTS(sampleRate: Double, channels: Int, modelId: 
 
 src = src.replace(
   /\/\/ Initialize TTS and Audio Player\s*\n\s*@ReactMethod\s*\n\s*fun initializeTTS\(sampleRate: Double, channels: Int, modelId: String\) \{[\s\S]*?realTimeAudioPlayer\?\.start\(\)\s*\n\s*\}/,
-  `// Initialize TTS and Audio Player — runs on background thread to avoid blocking the JS bridge
+  `// Initialize TTS and Audio Player -- runs on background thread to avoid blocking the JS bridge
     @ReactMethod
     fun initializeTTS(sampleRate: Double, channels: Int, modelId: String, promise: Promise) {
         thread {
