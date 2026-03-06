@@ -54,16 +54,19 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
   const scrollViewHeightRef = useRef(0);
   const sentenceLayoutsRef = useRef<number[]>([]);
 
+  // Normalize line endings to \n so TTS sentence positions (computed on normalized text) align
+  const normalize = (t: string) => t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
   useEffect(() => {
     if (textProp !== undefined) {
-      setContent(textProp);
+      setContent(normalize(textProp));
       onViewerMessage?.({ type: 'ready' });
       return;
     }
     if (!uri) return;
     const path = uri.replace(/^file:\/\//, '');
     RNFS.readFile(path, 'utf8')
-      .then(t => { setContent(t); onViewerMessage?.({ type: 'ready' }); })
+      .then(t => { setContent(normalize(t)); onViewerMessage?.({ type: 'ready' }); })
       .catch(e => setError('Could not read file: ' + e.message));
   }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -171,58 +174,68 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
     return (
       <View>
         {lines.map((line, li) => {
-          // Blank line → spacer
           if (line.length === 0) {
             return <View key={`line-${li}`} style={{ height: fontSize * 0.8 }} />;
           }
-          return (
-            <Text key={`line-${li}`} style={textStyle}>
-              {line.map((node, ni) => {
-                if (node.kind === 'literal') {
-                  return <Text key={`lit-${li}-${ni}`}>{node.text}</Text>;
-                }
-                const si = node.si;
-                const sent = sentences[si];
-                const isActive = si === activeSentenceIndex;
-                // Normalize internal newlines to spaces — they can't render in nested <Text> on Android
-                const displayText = sent.text.replace(/\r?\n/g, ' ');
 
-                if (isActive) {
-                  const words = displayText.split(/(\s+)/);
+          // Collect active sentence indices in this line to track in the View's onLayout
+          const sentIndicesInLine = line
+            .filter((n): n is { kind: 'sent'; si: number } => n.kind === 'sent')
+            .map(n => n.si);
+
+          return (
+            // <View> wrapper: onLayout here gives Y relative to the scroll content — reliable for auto-scroll
+            <View
+              key={`line-${li}`}
+              onLayout={(e) => {
+                const y = e.nativeEvent.layout.y;
+                for (const si of sentIndicesInLine) {
+                  sentenceLayoutsRef.current[si] = y;
+                }
+              }}
+            >
+              <Text style={textStyle}>
+                {line.map((node, ni) => {
+                  if (node.kind === 'literal') {
+                    return <Text key={`lit-${li}-${ni}`}>{node.text}</Text>;
+                  }
+                  const si = node.si;
+                  const sent = sentences[si];
+                  const isActive = si === activeSentenceIndex;
+                  // Normalize any residual newlines to spaces for inline rendering
+                  const displayText = sent.text.replace(/\n/g, ' ');
+
+                  if (isActive) {
+                    const words = displayText.split(/(\s+)/);
+                    return (
+                      <Text key={`s-${sent.index}`} suppressHighlighting onPress={() => onSentenceTap?.(si)}>
+                        {words.map((word, wi) => {
+                          const wordIdx = Math.floor(wi / 2);
+                          const isActiveWord = wordIdx === activeWordIndex && wi % 2 === 0;
+                          if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
+                          return (
+                            <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
+                              {word}
+                            </Text>
+                          );
+                        })}
+                      </Text>
+                    );
+                  }
+
                   return (
                     <Text
                       key={`s-${sent.index}`}
                       suppressHighlighting
                       onPress={() => onSentenceTap?.(si)}
-                      onLayout={(e) => { sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y; }}
+                      style={{ opacity: 0.65 }}
                     >
-                      {words.map((word, wi) => {
-                        const wordIdx = Math.floor(wi / 2);
-                        const isActiveWord = wordIdx === activeWordIndex && wi % 2 === 0;
-                        if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
-                        return (
-                          <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
-                            {word}
-                          </Text>
-                        );
-                      })}
+                      {displayText}
                     </Text>
                   );
-                }
-
-                return (
-                  <Text
-                    key={`s-${sent.index}`}
-                    suppressHighlighting
-                    onPress={() => onSentenceTap?.(si)}
-                    style={{ opacity: 0.65 }}
-                    onLayout={(e) => { sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y; }}
-                  >
-                    {displayText}
-                  </Text>
-                );
-              })}
-            </Text>
+                })}
+              </Text>
+            </View>
           );
         })}
       </View>
