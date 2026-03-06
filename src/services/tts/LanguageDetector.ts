@@ -7,9 +7,10 @@ const HANGUL = /[\uAC00-\uD7AF\u1100-\u11FF]/;
 // Common function words per language - we check the most frequent ones
 const FR_WORDS = /\b(le|la|les|de|du|un|une|des|et|est|en|qui|que|pour|dans|sur|au|ou|ne|pas|je|tu|il|nous|vous|ils)\b/gi;
 const DE_WORDS = /\b(der|die|das|und|ist|in|von|zu|mit|auf|für|den|dem|ein|eine|ich|sie|er|wir|auch|an|sich|wird)\b/gi;
-const ES_WORDS = /\b(el|la|los|las|de|del|un|una|y|es|en|que|se|para|con|por|su|lo|al|como|pero|más|no)\b/gi;
-const IT_WORDS = /\b(il|la|le|di|del|un|una|e|è|in|che|per|con|si|ho|sono|ma|non|se|da|al|una|lo|gli)\b/gi;
-const PT_WORDS = /\b(o|a|os|as|de|do|da|um|uma|e|é|em|que|se|para|com|por|sua|ao|como|mas|não)\b/gi;
+const ES_WORDS = /\b(los|las|del|una|que|para|con|por|como|pero|más|también|muy|este|esta|cuando|porque|donde|entre|desde|hasta|sobre|después|antes|tiene|están|hacer|puede)\b/gi;
+const IT_WORDS = /\b(del|della|delle|degli|che|per|con|sono|come|questo|questa|dopo|quando|perché|anche|molto|fare|può|hanno|della|essere|aveva|tutto)\b/gi;
+// Avoid short words shared with English (o, a, as, de, etc.) — use more distinctive PT words
+const PT_WORDS = /\b(uma|para|com|por|sua|como|mas|não|este|esta|isso|mais|tem|são|ele|ela|nos|você|muito|depois|quando|porque|também|ainda|já)\b/gi;
 const NL_WORDS = /\b(de|het|een|van|in|is|en|op|te|dat|die|zijn|voor|aan|met|als|ook|bij|kan|wordt|ze)\b/gi;
 
 function countMatches(text: string, re: RegExp): number {

@@ -119,68 +119,105 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       fontFamily ? { fontFamily } : null,
     ];
 
-    // Build fragments from original content using sentence charStart/charEnd offsets.
-    // This preserves all original whitespace, newlines, and paragraph breaks.
-    const fragments: React.ReactNode[] = [];
+    // Strategy: split full content on paragraph breaks (\n\n or \n).
+    // For each line, determine which sentence(s) it contains and render
+    // those sentences inline. This preserves newline structure since each
+    // line is its own <Text> block inside a <View>.
+
+    // Build a flat array of "runs": either a sentence ref or a literal string.
+    type Run = { type: 'sent'; si: number } | { type: 'text'; str: string };
+    const runs: Run[] = [];
     let cursor = 0;
 
     for (let si = 0; si < sentences.length; si++) {
       const sent = sentences[si];
-
-      // Gap between previous sentence end and this sentence start — original whitespace
       if (sent.charStart > cursor) {
-        fragments.push(<Text key={`gap-${si}`}>{content.slice(cursor, sent.charStart)}</Text>);
+        runs.push({ type: 'text', str: content.slice(cursor, sent.charStart) });
       }
+      runs.push({ type: 'sent', si });
+      cursor = sent.charEnd;
+    }
+    if (cursor < content.length) {
+      runs.push({ type: 'text', str: content.slice(cursor) });
+    }
 
-      const isActive = si === activeSentenceIndex;
+    // Now split runs on newlines, producing an array of lines where each
+    // line is an array of inline nodes. Splitting a text run on \n produces
+    // multiple lines; sentence runs stay on a single line (never split mid-sentence).
+    type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
+    const lines: InlineNode[][] = [[]];
 
-      if (isActive) {
-        // Active sentence: split into word spans for highlighting
-        const words = sent.text.split(/(\s+)/);
-        fragments.push(
-          <Text key={`s-${sent.index}`} onLayout={(e) => {
-            sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
-          }}>
-            <Text suppressHighlighting onPress={() => onSentenceTap?.(si)}>
-              {words.map((word, wi) => {
-                const wordIdx = Math.floor(wi / 2);
-                const isActiveWord = wordIdx === activeWordIndex && wi % 2 === 0;
-                if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
+    for (const run of runs) {
+      if (run.type === 'sent') {
+        lines[lines.length - 1].push({ kind: 'sent', si: run.si });
+      } else {
+        const parts = run.str.split('\n');
+        for (let pi = 0; pi < parts.length; pi++) {
+          if (pi > 0) lines.push([]);
+          if (parts[pi].length > 0) {
+            lines[lines.length - 1].push({ kind: 'literal', text: parts[pi] });
+          }
+        }
+      }
+    }
+
+    return (
+      <View>
+        {lines.map((line, li) => {
+          // Blank line → spacer
+          if (line.length === 0) {
+            return <View key={`line-${li}`} style={{ height: fontSize * 0.8 }} />;
+          }
+          return (
+            <Text key={`line-${li}`} style={textStyle}>
+              {line.map((node, ni) => {
+                if (node.kind === 'literal') {
+                  return <Text key={`lit-${li}-${ni}`}>{node.text}</Text>;
+                }
+                const si = node.si;
+                const sent = sentences[si];
+                const isActive = si === activeSentenceIndex;
+
+                if (isActive) {
+                  const words = sent.text.split(/(\s+)/);
+                  return (
+                    <Text
+                      key={`s-${sent.index}`}
+                      suppressHighlighting
+                      onPress={() => onSentenceTap?.(si)}
+                      onLayout={(e) => { sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y; }}
+                    >
+                      {words.map((word, wi) => {
+                        const wordIdx = Math.floor(wi / 2);
+                        const isActiveWord = wordIdx === activeWordIndex && wi % 2 === 0;
+                        if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
+                        return (
+                          <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
+                            {word}
+                          </Text>
+                        );
+                      })}
+                    </Text>
+                  );
+                }
+
                 return (
-                  <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
-                    {word}
+                  <Text
+                    key={`s-${sent.index}`}
+                    suppressHighlighting
+                    onPress={() => onSentenceTap?.(si)}
+                    style={{ opacity: 0.65 }}
+                    onLayout={(e) => { sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y; }}
+                  >
+                    {sent.text}
                   </Text>
                 );
               })}
             </Text>
-          </Text>,
-        );
-      } else {
-        // Inactive sentence: single node, no word splitting
-        fragments.push(
-          <Text key={`s-${sent.index}`} onLayout={(e) => {
-            sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
-          }}>
-            <Text
-              suppressHighlighting
-              onPress={() => onSentenceTap?.(si)}
-              style={{ opacity: 0.65 }}
-            >
-              {sent.text}
-            </Text>
-          </Text>,
-        );
-      }
-
-      cursor = sent.charEnd;
-    }
-
-    // Trailing content after the last sentence
-    if (cursor < content.length) {
-      fragments.push(<Text key="tail">{content.slice(cursor)}</Text>);
-    }
-
-    return <Text style={textStyle}>{fragments}</Text>;
+          );
+        })}
+      </View>
+    );
   }, [sentences, content, activeSentenceIndex, activeWordIndex, onSentenceTap, styles, fontSize, readerTheme, fontFamily]);
 
   const renderSearchContent = useCallback(() => {
