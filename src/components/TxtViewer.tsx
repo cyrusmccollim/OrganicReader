@@ -133,30 +133,44 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       }
 
       const isActive = si === activeSentenceIndex;
-      const words = sent.text.split(/(\s+)/);
 
-      fragments.push(
-        <Text key={`s-${sent.index}`} onLayout={(e) => {
-          sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
-        }}>
-          <Text
-            suppressHighlighting
-            onPress={() => onSentenceTap?.(si)}
-            style={isActive ? undefined : { opacity: 0.65 }}
-          >
-            {words.map((word, wi) => {
-              const wordIdx = Math.floor(wi / 2);
-              const isActiveWord = isActive && wordIdx === activeWordIndex && wi % 2 === 0;
-              if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
-              return (
-                <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
-                  {word}
-                </Text>
-              );
-            })}
-          </Text>
-        </Text>,
-      );
+      if (isActive) {
+        // Active sentence: split into word spans for highlighting
+        const words = sent.text.split(/(\s+)/);
+        fragments.push(
+          <Text key={`s-${sent.index}`} onLayout={(e) => {
+            sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
+          }}>
+            <Text suppressHighlighting onPress={() => onSentenceTap?.(si)}>
+              {words.map((word, wi) => {
+                const wordIdx = Math.floor(wi / 2);
+                const isActiveWord = wordIdx === activeWordIndex && wi % 2 === 0;
+                if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
+                return (
+                  <Text key={wi} style={isActiveWord ? styles.ttsWordHighlight : undefined}>
+                    {word}
+                  </Text>
+                );
+              })}
+            </Text>
+          </Text>,
+        );
+      } else {
+        // Inactive sentence: single node, no word splitting
+        fragments.push(
+          <Text key={`s-${sent.index}`} onLayout={(e) => {
+            sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
+          }}>
+            <Text
+              suppressHighlighting
+              onPress={() => onSentenceTap?.(si)}
+              style={{ opacity: 0.65 }}
+            >
+              {sent.text}
+            </Text>
+          </Text>,
+        );
+      }
 
       cursor = sent.charEnd;
     }
