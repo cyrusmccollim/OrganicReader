@@ -134,7 +134,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const trackLayoutRef = useRef({ x: 0, width: 0 });
 
   const isPlaying = ttsState === 'playing';
-  const isLoading = ttsState === 'loading' || ttsState === 'initializing';
+  const isLoading = ttsState === 'loading';
   const isDownloading = ttsState === 'downloading';
 
   // Sync reading progress with TTS position
