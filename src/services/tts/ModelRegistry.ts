@@ -23,7 +23,7 @@ async function downloadFile(
   dest: string,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+  const result = await new Promise<{ statusCode: number }>((resolve, reject) => {
     const { jobId, promise } = RNFS.downloadFile({
       fromUrl: url,
       toFile: dest,
@@ -33,9 +33,13 @@ async function downloadFile(
         if (res.contentLength > 0) onProgress?.(res.bytesWritten / res.contentLength);
       },
     });
-    promise.then(() => resolve()).catch(reject);
+    promise.then(resolve).catch(reject);
     void jobId;
   });
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    await RNFS.unlink(dest).catch(() => {});
+    throw new Error(`HTTP ${result.statusCode} fetching ${url}`);
+  }
 }
 
 async function ensureEspeakData(onProgress?: (fraction: number) => void): Promise<void> {

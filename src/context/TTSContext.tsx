@@ -162,8 +162,6 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     rawTextRef.current = rawText;
     flushBuffer();
-    await TrackPlayer.reset();
-    await cleanTmpDir();
 
     setSentenceTimings([]);
     timingsRef.current = [];
@@ -190,6 +188,9 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     setDownloadProgress(0);
 
     try {
+      await setupTrackPlayer();
+      await TrackPlayer.reset();
+      await cleanTmpDir();
       const model = await ensureModel(entry, (f) => setDownloadProgress(f));
       sampleRateRef.current = model.entry.sampleRate;
       await refreshDownloadedModels();
