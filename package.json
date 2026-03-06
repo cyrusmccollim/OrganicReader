@@ -21,9 +21,12 @@
     "react-native-fs": "^2.20.0",
     "react-native-image-picker": "^8.2.1",
     "react-native-safe-area-context": "^5.5.2",
+    "react-native-sherpa-onnx-offline-tts": "^0.2.6",
     "react-native-svg": "^15.15.3",
+    "react-native-track-player": "^4.1.2",
     "react-native-vision-camera": "^4.7.3",
-    "react-native-worklets-core": "^1.6.3"
+    "react-native-worklets-core": "^1.6.3",
+    "react-native-zip-archive": "^7.0.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

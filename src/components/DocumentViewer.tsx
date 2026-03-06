@@ -1,22 +1,41 @@
 import React, { forwardRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import RNFS from 'react-native-fs';
 import { LibraryFile, ViewerHandle } from '../types';
 import { TxtViewer } from './TxtViewer';
 import { useTheme } from '../ThemeContext';
 import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
+
+import { Sentence } from '../services/tts/TextSegmenter';
 
 interface Props {
   file: LibraryFile;
   refreshKey?: number;
   onSearchResult?: (count: number, current: number) => void;
   onViewerMessage?: (msg: Record<string, any>) => void;
+  onTextExtracted?: (text: string) => void;
+  ttsMode?: boolean;
+  ttsSentences?: Sentence[];
+  ttsActiveSentenceIndex?: number;
+  ttsActiveWordIndex?: number;
+  onSentenceTap?: (index: number) => void;
 }
 
-export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, refreshKey, onSearchResult, onViewerMessage }, ref) => {
+export const DocumentViewer = forwardRef<ViewerHandle, Props>(({
+  file, refreshKey, onSearchResult, onViewerMessage, onTextExtracted,
+  ttsMode, ttsSentences, ttsActiveSentenceIndex, ttsActiveWordIndex, onSentenceTap,
+}, ref) => {
   const { theme } = useTheme();
   const [extractedText, setExtractedText] = useState<string | undefined>(undefined);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+
+  // For TXT files: read and expose text for TTS
+  useEffect(() => {
+    if (!file.uri || file.type !== 'TXT' || !onTextExtracted) return;
+    const path = file.uri.replace(/^file:\/\//, '');
+    RNFS.readFile(path, 'utf8').then(onTextExtracted).catch(() => {});
+  }, [file.uri, file.type, onTextExtracted]);
 
   useEffect(() => {
     if (!file.uri || file.type === 'TXT') return;
@@ -33,7 +52,11 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, refreshKe
     if (!fn) { setExtracting(false); return; }
 
     fn(file.uri)
-      .then(text => { setExtractedText(text); setExtracting(false); })
+      .then(text => {
+        setExtractedText(text);
+        setExtracting(false);
+        onTextExtracted?.(text);
+      })
       .catch(e => { setExtractError(String(e)); setExtracting(false); });
   }, [file.uri, file.type]);
 
@@ -48,7 +71,8 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, refreshKe
   }
 
   if (file.type === 'TXT') {
-    return <TxtViewer ref={ref} uri={file.uri} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+    return <TxtViewer ref={ref} uri={file.uri} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage}
+      ttsMode={ttsMode} sentences={ttsSentences} activeSentenceIndex={ttsActiveSentenceIndex} activeWordIndex={ttsActiveWordIndex} onSentenceTap={onSentenceTap} />;
   }
 
   if (extractError) {
@@ -67,7 +91,8 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({ file, refreshKe
     );
   }
 
-  return <TxtViewer ref={ref} text={extractedText} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage} />;
+  return <TxtViewer ref={ref} text={extractedText} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage}
+    ttsMode={ttsMode} sentences={ttsSentences} activeSentenceIndex={ttsActiveSentenceIndex} activeWordIndex={ttsActiveWordIndex} onSentenceTap={onSentenceTap} />;
 });
 
 const styles = StyleSheet.create({

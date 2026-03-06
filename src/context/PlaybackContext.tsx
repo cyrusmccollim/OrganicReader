@@ -32,10 +32,14 @@ export interface AutoSkipSettings {
   urls: boolean;
 }
 
+export const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
 interface PlayerSettings {
   autoHidePlayer: boolean;
   autoScroll: boolean;
-  playbackSpeed: string;
+  playbackSpeed: number;
+  selectedSpeakerIndex: number;
+  overrideLanguage: string | null;
 }
 
 interface PlaybackContextType {
@@ -70,13 +74,15 @@ const DEFAULT_AUTO_SKIP: AutoSkipSettings = {
 const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   autoHidePlayer: false,
   autoScroll: true,
-  playbackSpeed: '1x',
+  playbackSpeed: 1.0,
+  selectedSpeakerIndex: 0,
+  overrideLanguage: null,
 };
 
 const STORAGE_KEYS = {
   APPEARANCE: '@organicreader/playback/appearance/v2',
   AUTO_SKIP: '@organicreader/playback/autoskip/v1',
-  PLAYER: '@organicreader/playback/player/v2',
+  PLAYER: '@organicreader/playback/player/v3',
 };
 
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {

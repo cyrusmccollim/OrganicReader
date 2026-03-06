@@ -5,6 +5,7 @@ import { useTheme } from '../ThemeContext';
 import { usePlayback, FONT_FAMILIES } from '../context/PlaybackContext';
 import { Theme } from '../theme';
 import { ViewerHandle } from '../types';
+import { Sentence } from '../services/tts/TextSegmenter';
 
 const THEME_COLORS: Record<string, { bg: string; text: string }> = {
   light:   { bg: '#ffffff', text: '#1a1a1a' },
@@ -19,13 +20,23 @@ interface Props {
   refreshKey?: number;
   onSearchResult?: (count: number, current: number) => void;
   onViewerMessage?: (msg: Record<string, any>) => void;
+  // TTS highlight mode
+  ttsMode?: boolean;
+  sentences?: Sentence[];
+  activeSentenceIndex?: number;
+  activeWordIndex?: number;
+  onSentenceTap?: (index: number) => void;
 }
 
 function escapeRegex(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp, refreshKey, onSearchResult, onViewerMessage }, ref) => {
+export const TxtViewer = forwardRef<ViewerHandle, Props>(({
+  uri, text: textProp, refreshKey,
+  onSearchResult, onViewerMessage,
+  ttsMode, sentences, activeSentenceIndex, activeWordIndex, onSentenceTap,
+}, ref) => {
   const { theme } = useTheme();
   const { appearance } = usePlayback();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -39,6 +50,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
   const [searchCurrent, setSearchCurrent] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const contentHeightRef = useRef(0);
+  const sentenceLayoutsRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (textProp !== undefined) {
@@ -53,7 +65,16 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
       .catch(e => setError('Could not read file: ' + e.message));
   }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Compute match positions
+  // Auto-scroll to active sentence in TTS mode
+  useEffect(() => {
+    if (!ttsMode || activeSentenceIndex === undefined) return;
+    const y = sentenceLayoutsRef.current[activeSentenceIndex];
+    if (y !== undefined) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
+    }
+  }, [ttsMode, activeSentenceIndex]);
+
+  // Compute match positions for search
   const matchPositions = useMemo(() => {
     if (!content || !activeSearch.trim()) return [];
     const positions: number[] = [];
@@ -66,7 +87,6 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
     return positions;
   }, [content, activeSearch]);
 
-  // Report results to parent whenever they change
   useEffect(() => {
     if (!activeSearch.trim()) {
       onSearchResult?.(0, 0);
@@ -75,7 +95,6 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
     onSearchResult?.(matchPositions.length, matchPositions.length > 0 ? searchCurrent + 1 : 0);
   }, [matchPositions.length, searchCurrent, activeSearch, onSearchResult]);
 
-  // Scroll to current match (proportional approximation)
   useEffect(() => {
     if (!content || matchPositions.length === 0) return;
     const pos = matchPositions[searchCurrent] ?? 0;
@@ -91,7 +110,56 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
     clearSearch: () => { setActiveSearch(''); setSearchCurrent(0); },
   }), [matchPositions]);
 
-  const renderContent = useCallback(() => {
+  const renderTTSContent = useCallback(() => {
+    if (!sentences || sentences.length === 0 || !content) return null;
+
+    const textStyle = [
+      styles.text,
+      { fontSize, lineHeight: fontSize * 1.65, color: readerTheme.text },
+      fontFamily ? { fontFamily } : null,
+    ];
+
+    return (
+      <Text style={textStyle}>
+        {sentences.map((sent, si) => {
+          const isActive = si === activeSentenceIndex;
+          const words = sent.text.split(/(\s+)/);
+
+          return (
+            <Text key={sent.index} onLayout={(e) => {
+              sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y;
+            }}>
+              <Text
+                suppressHighlighting
+                onPress={() => onSentenceTap?.(si)}
+                style={isActive ? undefined : { opacity: 0.65 }}
+              >
+                {words.map((word, wi) => {
+                  // wi*2 accounts for splitting on whitespace (odd indices are spaces)
+                  const wordIdx = Math.floor(wi / 2);
+                  const isActiveWord = isActive && wordIdx === activeWordIndex && wi % 2 === 0;
+                  if (wi % 2 === 1) {
+                    // Whitespace
+                    return <Text key={wi}>{word}</Text>;
+                  }
+                  return (
+                    <Text
+                      key={wi}
+                      style={isActiveWord ? styles.ttsWordHighlight : undefined}
+                    >
+                      {word}
+                    </Text>
+                  );
+                })}
+              </Text>
+            </Text>
+          );
+        })}
+      </Text>
+    );
+  }, [sentences, content, activeSentenceIndex, activeWordIndex, onSentenceTap, styles, fontSize, readerTheme, fontFamily]);
+
+  const renderSearchContent = useCallback(() => {
     if (!content) return null;
 
     const textStyle = [
@@ -116,10 +184,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
             const key = i;
             matchIdx++;
             return (
-              <Text
-                key={key}
-                style={isActive ? styles.highlightActive : styles.highlight}
-              >
+              <Text key={key} style={isActive ? styles.highlightActive : styles.highlight}>
                 {part}
               </Text>
             );
@@ -154,7 +219,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({ uri, text: textProp,
       showsVerticalScrollIndicator={false}
       onContentSizeChange={(_, h) => { contentHeightRef.current = h; }}
     >
-      {renderContent()}
+      {ttsMode && sentences ? renderTTSContent() : renderSearchContent()}
     </ScrollView>
   );
 });
@@ -172,6 +237,10 @@ function makeStyles(_theme: Theme) {
       backgroundColor: 'rgba(255,153,0,0.75)',
       color: '#000',
       borderRadius: 2,
+    },
+    ttsWordHighlight: {
+      backgroundColor: 'rgba(100,200,100,0.38)',
+      borderRadius: 3,
     },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     errorText: { color: '#e05555', fontSize: 14, textAlign: 'center', padding: 20 },
