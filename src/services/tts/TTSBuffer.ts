@@ -73,6 +73,7 @@ export class TTSBuffer {
     this.isPlaying = true;
     try {
       await SimpleAudio.play(next.path);
+      if (this.cancelled) return; // guard: flush() may have been called while awaiting play()
       this.onSegmentReady({ sentenceIndex: next.index, timing: next.timing, audioPath: next.path });
     } catch (e) {
       this.isPlaying = false;

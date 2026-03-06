@@ -7,6 +7,7 @@ import { useTheme } from '../ThemeContext';
 import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
 
 import { Sentence } from '../services/tts/TextSegmenter';
+import { SentenceTiming } from '../services/tts/TimingAccumulator';
 
 interface Props {
   file: LibraryFile;
@@ -17,13 +18,13 @@ interface Props {
   ttsMode?: boolean;
   ttsSentences?: Sentence[];
   ttsActiveSentenceIndex?: number;
-  ttsActiveWordIndex?: number;
+  ttsActiveSentenceTiming?: SentenceTiming | null;
   onSentenceTap?: (index: number) => void;
 }
 
 export const DocumentViewer = forwardRef<ViewerHandle, Props>(({
   file, refreshKey, onSearchResult, onViewerMessage, onTextExtracted,
-  ttsMode, ttsSentences, ttsActiveSentenceIndex, ttsActiveWordIndex, onSentenceTap,
+  ttsMode, ttsSentences, ttsActiveSentenceIndex, ttsActiveSentenceTiming, onSentenceTap,
 }, ref) => {
   const { theme } = useTheme();
   const [extractedText, setExtractedText] = useState<string | undefined>(undefined);
@@ -72,7 +73,7 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({
 
   if (file.type === 'TXT') {
     return <TxtViewer ref={ref} uri={file.uri} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage}
-      ttsMode={ttsMode} sentences={ttsSentences} activeSentenceIndex={ttsActiveSentenceIndex} activeWordIndex={ttsActiveWordIndex} onSentenceTap={onSentenceTap} />;
+      ttsMode={ttsMode} sentences={ttsSentences} activeSentenceIndex={ttsActiveSentenceIndex} activeSentenceTiming={ttsActiveSentenceTiming} onSentenceTap={onSentenceTap} />;
   }
 
   if (extractError) {
@@ -92,7 +93,7 @@ export const DocumentViewer = forwardRef<ViewerHandle, Props>(({
   }
 
   return <TxtViewer ref={ref} text={extractedText} refreshKey={refreshKey} onSearchResult={onSearchResult} onViewerMessage={onViewerMessage}
-    ttsMode={ttsMode} sentences={ttsSentences} activeSentenceIndex={ttsActiveSentenceIndex} activeWordIndex={ttsActiveWordIndex} onSentenceTap={onSentenceTap} />;
+    ttsMode={ttsMode} sentences={ttsSentences} activeSentenceIndex={ttsActiveSentenceIndex} activeSentenceTiming={ttsActiveSentenceTiming} onSentenceTap={onSentenceTap} />;
 });
 
 const styles = StyleSheet.create({
