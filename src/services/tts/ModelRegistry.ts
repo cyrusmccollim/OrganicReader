@@ -31,10 +31,9 @@ async function isModelExtracted(entry: PiperModelEntry): Promise<boolean> {
 }
 
 export async function ensureModel(
-  langCode: string,
+  entry: PiperModelEntry,
   onProgress?: (fraction: number) => void,
 ): Promise<ActiveModel> {
-  const entry = findModel(langCode);
   await ensureDir(MODELS_DIR);
 
   const extracted = await isModelExtracted(entry);
@@ -43,7 +42,6 @@ export async function ensureModel(
     const archiveExists = await RNFS.exists(archive);
 
     if (!archiveExists) {
-      // Download with progress
       await new Promise<void>((resolve, reject) => {
         const { jobId, promise } = RNFS.downloadFile({
           fromUrl: entry.zipUrl,
@@ -56,20 +54,14 @@ export async function ensureModel(
             }
           },
         });
-        promise
-          .then(() => resolve())
-          .catch(reject);
-        // suppress unused jobId warning
+        promise.then(() => resolve()).catch(reject);
         void jobId;
       });
     }
 
     onProgress?.(0.75);
-    // Unzip archive
     await unzip(archive, MODELS_DIR);
     onProgress?.(0.95);
-
-    // Delete archive after extraction to save space
     await RNFS.unlink(archive).catch(() => {});
     onProgress?.(1.0);
   }
@@ -85,21 +77,23 @@ export async function ensureModel(
   return { entry, modelPath, tokensPath, dataDirPath };
 }
 
-export function isDownloaded(_langCode: string): boolean {
-  // Synchronous check not possible with RNFS — use isDownloadedAsync for accuracy
-  return false;
+// Convenience: ensure model by language code (uses default voice for that language)
+export async function ensureModelForLang(
+  langCode: string,
+  onProgress?: (fraction: number) => void,
+): Promise<ActiveModel> {
+  return ensureModel(findModel(langCode), onProgress);
 }
 
-export async function isDownloadedAsync(langCode: string): Promise<boolean> {
-  return isModelExtracted(findModel(langCode));
+export async function isDownloadedAsync(entry: PiperModelEntry): Promise<boolean> {
+  return isModelExtracted(entry);
 }
 
 export function listAll(): PiperModelEntry[] {
   return PIPER_MODELS;
 }
 
-export async function deleteModel(langCode: string): Promise<void> {
-  const entry = findModel(langCode);
+export async function deleteModel(entry: PiperModelEntry): Promise<void> {
   const dir = voiceDir(entry);
   const exists = await RNFS.exists(dir);
   if (exists) await RNFS.unlink(dir);
