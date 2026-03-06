@@ -12,6 +12,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
+import RNFS from 'react-native-fs';
 import { useTheme } from '../ThemeContext';
 import { Theme } from '../theme';
 import { LibraryFile, Bookmark, ViewerHandle } from '../types';
@@ -21,6 +22,7 @@ import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
 import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES } from '../context/PlaybackContext';
 import { useTextFileCreator } from '../hooks/useTextFileCreator';
+import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
 import {
   ArrowDown01Icon,
   Bookmark01Icon,
@@ -128,26 +130,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const [searchResults, setSearchResults] = useState({ count: 0, current: 0 });
   const searchInputRef = useRef<TextInput>(null);
 
-  // Progress bar scrub
-  const progressTrackWidth = useRef(0);
-  const scrubPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        const x = evt.nativeEvent.locationX;
-        if (progressTrackWidth.current > 0) {
-          const newProgress = Math.max(0, Math.min(1, x / progressTrackWidth.current));
-          setProgress(newProgress);
-          updateProgress(file.id, newProgress);
-        }
-      },
-      onPanResponderMove: () => {
-        // superseded by scrubAwarePR which uses absolute pageX
-      },
-    })
-  ).current;
-
   const trackLayoutRef = useRef({ x: 0, width: 0 });
 
   // Separate scrub PanResponder that uses absolute position
@@ -185,8 +167,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
       },
     })
   ).current;
-
-  void scrubPanResponder; // unused but kept for clarity
 
   useEffect(() => { markOpened(file.id); }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setProgress(file.progress); }, [file.progress]);
@@ -397,7 +377,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               onLayout={(e) => {
                 const { x, width } = e.nativeEvent.layout;
                 trackLayoutRef.current = { x, width };
-                progressTrackWidth.current = width;
               }}
               {...scrubAwarePR.panHandlers}
             >
@@ -479,14 +458,10 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                   try {
                     // Load text content for editing
                     if (file.type === 'TXT' && file.uri) {
-                      const RNFS = require('react-native-fs');
                       const path = file.uri.replace(/^file:\/\//, '');
                       const text = await RNFS.readFile(path, 'utf8');
                       setEditText(text);
                     } else {
-                      // For PDF/DOCX/EPUB, we need to extract text
-                      // The DocumentViewer already does this, but we'll do it again here
-                      const { extractPdfText, extractDocxText, extractEpubText } = require('../utils/extractText');
                       const extractors: Record<string, (uri: string) => Promise<string>> = {
                         PDF: extractPdfText,
                         DOCX: extractDocxText,
@@ -691,7 +666,6 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
         }}
         onSave={async (title, content) => {
           if (file.uri) {
-            const RNFS = require('react-native-fs');
             const path = file.uri.replace(/^file:\/\//, '');
             await RNFS.writeFile(path, content, 'utf8');
             updateFile(file.id, { name: title });

@@ -9,7 +9,7 @@ export function useTextFileCreator() {
     const uri = await LibraryRepository.persistTextContent(content, title);
 
     const file: LibraryFile = {
-      id: Date.now().toString(),
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       name: title,
       type: 'TXT',
       thumbnail: '📃',

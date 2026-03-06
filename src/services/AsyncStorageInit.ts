@@ -30,7 +30,6 @@ export async function initializeAsyncStorage(): Promise<boolean> {
     if (retrieved === testValue) {
       isInitialized = true;
       initError = null;
-      console.log('✓ AsyncStorage initialized successfully');
       return true;
     }
   } catch (error) {

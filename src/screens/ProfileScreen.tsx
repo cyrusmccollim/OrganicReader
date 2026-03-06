@@ -11,6 +11,9 @@ import {
 } from 'react-native';
 import { useTheme } from '../ThemeContext';
 import { Theme } from '../theme';
+import { useAuth } from '../context/AuthContext';
+import { useLibrary } from '../context/LibraryContext';
+import { getUserInitials, calculateReadingTime } from '../utils/readingStats';
 import {
   ArrowLeft01Icon,
   Edit01Icon,
@@ -31,24 +34,33 @@ interface Props {
 export function ProfileScreen({ onBack }: Props) {
   const { theme } = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { user, signIn, signOut } = useAuth();
+  const { files } = useLibrary();
 
-  const [name, setName] = useState('Example');
-  const email = 'example@mail.com';
-  const [editingName, setEditingName]   = useState(false);
+  const name  = user?.name  ?? '';
+  const email = user?.email ?? '';
+
+  const [editingName, setEditingName]     = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
-  const [tempName, setTempName] = useState('Example');
+  const [tempName, setTempName]           = useState('');
 
-  const initials = name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  const initials = getUserInitials(name);
 
-  const saveName = () => {
-    setName(tempName.trim() || name);
+  const saveName = async () => {
+    const trimmed = tempName.trim();
+    if (trimmed && user) {
+      await signIn(trimmed, user.email);
+    }
     setEditingName(false);
   };
+
+  const handleSignOut = async () => {
+    setConfirmSignOut(false);
+    await signOut();
+    onBack();
+  };
+
+  const weeklyReadingTime = calculateReadingTime(files);
 
   return (
     <>
@@ -83,8 +95,8 @@ export function ProfileScreen({ onBack }: Props) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.displayName}>{name}</Text>
-        <Text style={styles.displayEmail}>{email}</Text>
+        <Text style={styles.displayName}>{name || 'No Name'}</Text>
+        <Text style={styles.displayEmail}>{email || 'No email'}</Text>
 
         {/* Account Info */}
         <Text style={styles.sectionTitle}>ACCOUNT INFO</Text>
@@ -94,7 +106,7 @@ export function ProfileScreen({ onBack }: Props) {
               <Edit01Icon size={16} color={theme.colors.primary} />
               <Text style={styles.rowLabel}>Name</Text>
             </View>
-            <Text style={styles.rowValue}>{name}</Text>
+            <Text style={styles.rowValue}>{name || '—'}</Text>
           </TouchableOpacity>
           <View style={styles.sep} />
           <View style={styles.row}>
@@ -102,7 +114,7 @@ export function ProfileScreen({ onBack }: Props) {
               <Mail01Icon size={16} color={theme.colors.primary} />
               <Text style={styles.rowLabel}>Email</Text>
             </View>
-            <Text style={styles.rowValue} numberOfLines={1}>{email}</Text>
+            <Text style={styles.rowValue} numberOfLines={1}>{email || '—'}</Text>
           </View>
           <View style={styles.sep} />
           <View style={styles.row}>
@@ -133,22 +145,15 @@ export function ProfileScreen({ onBack }: Props) {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Clock01Icon size={20} color={theme.colors.primary} />
-            <Text style={styles.statValue}>12.5</Text>
-            <Text style={styles.statLabel}>Hrs This Week</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Clock01Icon size={20} color={theme.colors.primary} />
-            <Text style={styles.statValue}>127.3</Text>
-            <Text style={styles.statLabel}>Total Hours</Text>
+            <Text style={styles.statValue}>{weeklyReadingTime}</Text>
+            <Text style={styles.statLabel}>Reading Time</Text>
           </View>
           <View style={styles.statCard}>
             <CheckmarkCircle01Icon size={20} color={theme.colors.primary} />
-            <Text style={styles.statValue}>5</Text>
+            <Text style={styles.statValue}>{files.length}</Text>
             <Text style={styles.statLabel}>Documents</Text>
           </View>
         </View>
-
-        <Text style={styles.memberSince}>Member since January 2024</Text>
 
         {/* Sign Out */}
         <Text style={styles.sectionTitle}>ACCOUNT</Text>
@@ -200,10 +205,7 @@ export function ProfileScreen({ onBack }: Props) {
               <TouchableOpacity onPress={() => setConfirmSignOut(false)} style={styles.modalCancel}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { setConfirmSignOut(false); console.log('Signed out'); }}
-                style={styles.modalDanger}
-              >
+              <TouchableOpacity onPress={handleSignOut} style={styles.modalDanger}>
                 <Text style={styles.modalDangerText}>Sign Out</Text>
               </TouchableOpacity>
             </View>
@@ -328,13 +330,6 @@ function makeStyles(theme: Theme) {
     },
     statValue: { fontSize: 20, fontWeight: '700', color: colors.primary },
     statLabel: { fontSize: 10, color: colors.textSecondary, textAlign: 'center' },
-    memberSince: {
-      textAlign: 'center',
-      color: colors.textSecondary,
-      fontSize: 12,
-      marginTop: 16,
-      marginBottom: 20,
-    },
     // Modals
     modalOverlay: {
       flex: 1,

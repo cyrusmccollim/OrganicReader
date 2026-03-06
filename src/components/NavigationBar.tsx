@@ -53,13 +53,7 @@ export function NavigationBar({ currentScreen, onNavigate, onOpenFile, onPickFil
   const handlePickFiles = async () => {
     if (!onPickFiles) return;
     const file = await onPickFiles();
-    if (file && onOpenFile) {
-      onOpenFile(file);
-    }
-  };
-
-  const handleImportOption = (id: string) => {
-    onImportOption?.(id);
+    if (file && onOpenFile) onOpenFile(file);
   };
 
   return (
@@ -124,7 +118,7 @@ export function NavigationBar({ currentScreen, onNavigate, onOpenFile, onPickFil
         visible={showCreate}
         onClose={() => setShowCreate(false)}
         onPickFiles={handlePickFiles}
-        onSelectOption={handleImportOption}
+        onSelectOption={onImportOption}
       />
     </>
   );

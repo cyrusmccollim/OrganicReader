@@ -35,8 +35,7 @@ const importOptions: ImportOption[] = [
   { id: 'more',   label: 'More',   IconComponent: GridIcon },
 ];
 
-const STREAK_DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const STREAK_ACTIVE = [true, true, true, true, true, true, false];
+const WEEK_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -57,6 +56,20 @@ export function HomeScreen({ onOpenFile, onSelectOption, onNavigateToProfile }: 
   const { files } = useLibrary();
   const { user } = useAuth();
   const { pickDocument } = useDocumentPicker();
+
+  const weekActivity = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=Sun
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+    return WEEK_LABELS.map((label, i) => {
+      const day = new Date(monday);
+      day.setDate(monday.getDate() + i);
+      const dayStr = day.toDateString();
+      const active = files.some(f => f.lastOpenedAt && new Date(f.lastOpenedAt).toDateString() === dayStr);
+      return { label, active };
+    });
+  }, [files]);
 
   const continueReading = useMemo(() => {
     if (files.length === 0) return null;
@@ -104,23 +117,21 @@ export function HomeScreen({ onOpenFile, onSelectOption, onNavigateToProfile }: 
           </View>
           <Text style={styles.streakLabel}>Day Streak</Text>
           <View style={styles.streakDays}>
-            {STREAK_DAYS.map((day, i) => (
+            {weekActivity.map(({ label, active }, i) => (
               <View
                 key={i}
                 style={[
                   styles.streakDot,
-                  STREAK_ACTIVE[i]
-                    ? { backgroundColor: theme.colors.primary }
-                    : { backgroundColor: theme.colors.border },
+                  { backgroundColor: active ? theme.colors.primary : theme.colors.border },
                 ]}
               >
                 <Text
                   style={[
                     styles.streakDayLabel,
-                    { color: STREAK_ACTIVE[i] ? theme.colors.darkBg : theme.colors.textSecondary },
+                    { color: active ? theme.colors.darkBg : theme.colors.textSecondary },
                   ]}
                 >
-                  {day}
+                  {label}
                 </Text>
               </View>
             ))}
