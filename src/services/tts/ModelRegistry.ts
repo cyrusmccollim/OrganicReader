@@ -1,7 +1,7 @@
 import RNFS from 'react-native-fs';
 import { unzip } from 'react-native-zip-archive';
 import TTSManager from 'react-native-sherpa-onnx-offline-tts';
-import { PIPER_MODELS, PiperModelEntry, findModel, onnxUrl, tokensUrl, ESPEAK_ZIP_URL } from '../../config/ttsModels';
+import { PIPER_MODELS, PiperModelEntry, onnxUrl, tokensUrl, ESPEAK_ZIP_URL } from '../../config/ttsModels';
 
 const MODELS_DIR = `${RNFS.DocumentDirectoryPath}/tts-models`;
 const ESPEAK_DIR = `${MODELS_DIR}/espeak-ng-data`;
@@ -85,13 +85,6 @@ export async function ensureModel(
   await TTSManager.initialize(cfg);
 
   return { entry, modelPath, tokensPath: tPath, dataDirPath: ESPEAK_DIR };
-}
-
-export async function ensureModelForLang(
-  langCode: string,
-  onProgress?: (fraction: number) => void,
-): Promise<ActiveModel> {
-  return ensureModel(findModel(langCode), onProgress);
 }
 
 export async function isDownloadedAsync(entry: PiperModelEntry): Promise<boolean> {
