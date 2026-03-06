@@ -33,7 +33,7 @@ interface TTSContextType {
   initTTS: (rawText: string) => void;
   play: () => Promise<void>;
   pause: () => Promise<void>;
-  seekToFraction: (f: number) => void;
+  seekToFraction: (f: number) => Promise<void>;
   seekToSentence: (index: number) => void;
   jumpSeconds: (delta: number) => void;
   setSpeed: (speed: number) => Promise<void>;
@@ -228,16 +228,15 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     if (index < 0 || index >= sents.length) return;
 
     setTtsState('seeking');
+
+    // Read existing timing BEFORE clearing (fixes the timing-reset bug)
+    const existingTiming = timingsRef.current.find(t => t.sentenceIndex === index);
+    const startMs = existingTiming?.startMs ?? 0;
+
     flushBuffer();
     await TrackPlayer.reset();
     setSentenceTimings([]);
     timingsRef.current = [];
-
-    // Calculate cumulative start time up to this sentence
-    // Use already-known timings if we have them, else start from 0
-    let startMs = 0;
-    const existingTiming = timingsRef.current.find(t => t.sentenceIndex === index);
-    if (existingTiming) startMs = existingTiming.startMs;
 
     bufferRef.current = new TTSBuffer(
       sents.slice(index),
@@ -253,7 +252,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     setTtsState('playing');
   }, [flushBuffer, onSegmentReady, onBufferError]);
 
-  const seekToFraction = useCallback((f: number) => {
+  const seekToFraction = useCallback(async (f: number) => {
     const targetChar = f * totalCharsRef.current;
     const sents = sentencesRef.current;
     let targetIdx = 0;
@@ -261,7 +260,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       if (sents[i].charStart <= targetChar) targetIdx = i;
       else break;
     }
-    seekToSentence(targetIdx);
+    await seekToSentence(targetIdx);
   }, [seekToSentence]);
 
   const jumpSeconds = useCallback(async (delta: number) => {
