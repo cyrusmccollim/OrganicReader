@@ -96,7 +96,7 @@ export class TTSBuffer {
       const startMs = this.cumulativeMs;
 
       try {
-        const segment = await synthesize(sentence.text, this.sampleRate);
+        const segment = await synthesize(sentence.ttsText, this.sampleRate);
         if (this.cancelled) { await deleteTempFile(segment.audioPath); break; }
 
         this.generatedPaths.push(segment.audioPath);

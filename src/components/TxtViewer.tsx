@@ -50,6 +50,8 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
   const [searchCurrent, setSearchCurrent] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const contentHeightRef = useRef(0);
+  const scrollOffsetRef = useRef(0);
+  const scrollViewHeightRef = useRef(0);
   const sentenceLayoutsRef = useRef<number[]>([]);
 
   useEffect(() => {
@@ -65,12 +67,16 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       .catch(e => setError('Could not read file: ' + e.message));
   }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll to active sentence in TTS mode
+  // Auto-scroll: only when highlighted sentence passes 75% of the visible viewport
   useEffect(() => {
     if (!ttsMode || activeSentenceIndex === undefined) return;
-    const y = sentenceLayoutsRef.current[activeSentenceIndex];
-    if (y !== undefined) {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
+    const sentY = sentenceLayoutsRef.current[activeSentenceIndex];
+    if (sentY === undefined) return;
+    const offset = scrollOffsetRef.current;
+    const height = scrollViewHeightRef.current;
+    if (height === 0) return;
+    if (sentY > offset + height * 0.75) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, sentY - height * 0.45), animated: true });
     }
   }, [ttsMode, activeSentenceIndex]);
 
@@ -144,6 +150,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
     // Now split runs on newlines, producing an array of lines where each
     // line is an array of inline nodes. Splitting a text run on \n produces
     // multiple lines; sentence runs stay on a single line (never split mid-sentence).
+    // Normalize \r\n to \n so Windows-format content doesn't produce stray \r characters.
     type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number };
     const lines: InlineNode[][] = [[]];
 
@@ -151,7 +158,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       if (run.type === 'sent') {
         lines[lines.length - 1].push({ kind: 'sent', si: run.si });
       } else {
-        const parts = run.str.split('\n');
+        const parts = run.str.replace(/\r\n/g, '\n').split('\n');
         for (let pi = 0; pi < parts.length; pi++) {
           if (pi > 0) lines.push([]);
           if (parts[pi].length > 0) {
@@ -177,9 +184,11 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
                 const si = node.si;
                 const sent = sentences[si];
                 const isActive = si === activeSentenceIndex;
+                // Normalize internal newlines to spaces — they can't render in nested <Text> on Android
+                const displayText = sent.text.replace(/\r?\n/g, ' ');
 
                 if (isActive) {
-                  const words = sent.text.split(/(\s+)/);
+                  const words = displayText.split(/(\s+)/);
                   return (
                     <Text
                       key={`s-${sent.index}`}
@@ -209,7 +218,7 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
                     style={{ opacity: 0.65 }}
                     onLayout={(e) => { sentenceLayoutsRef.current[si] = e.nativeEvent.layout.y; }}
                   >
-                    {sent.text}
+                    {displayText}
                   </Text>
                 );
               })}
@@ -278,6 +287,9 @@ export const TxtViewer = forwardRef<ViewerHandle, Props>(({
       style={[styles.scroll, { backgroundColor: readerTheme.bg }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={100}
+      onLayout={(e) => { scrollViewHeightRef.current = e.nativeEvent.layout.height; }}
+      onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
       onContentSizeChange={(_, h) => { contentHeightRef.current = h; }}
     >
       {ttsMode && sentences ? renderTTSContent() : renderSearchContent()}

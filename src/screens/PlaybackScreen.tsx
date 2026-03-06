@@ -21,7 +21,8 @@ import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { DocumentViewer } from '../components/DocumentViewer';
 import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
-import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES, SPEED_OPTIONS } from '../context/PlaybackContext';
+import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES } from '../context/PlaybackContext';
+import { PIPER_MODELS } from '../config/ttsModels';
 import { useTTS } from '../context/TTSContext';
 import { useTextFileCreator } from '../hooks/useTextFileCreator';
 import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
@@ -60,6 +61,102 @@ const THEMES: { id: ReaderTheme; label: string; color: string; text: string }[] 
 
 const FONT_S_MIN = 12;
 const FONT_S_MAX = 36;
+
+// Speed steps: 0.5, 1.0, 1.5, 2.0 — snaps to 0.5 increments
+const SPEED_STEPS = [0.5, 1.0, 1.5, 2.0];
+
+function SpeedSlider({
+  value, onChange, primaryColor, borderColor, trackBg, textColor, labelColor,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  primaryColor: string;
+  borderColor: string;
+  trackBg: string;
+  textColor: string;
+  labelColor: string;
+}) {
+  const trackWidthRef = useRef(0);
+  const stepCount = SPEED_STEPS.length - 1;
+
+  const positionFromValue = (v: number) =>
+    ((v - SPEED_STEPS[0]) / (SPEED_STEPS[stepCount] - SPEED_STEPS[0]));
+
+  const snapToStep = (pos: number): number => {
+    const stepIndex = Math.round(pos * stepCount);
+    const clamped = Math.max(0, Math.min(stepCount, stepIndex));
+    return SPEED_STEPS[clamped];
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        if (trackWidthRef.current > 0) {
+          const pos = Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidthRef.current));
+          onChange(snapToStep(pos));
+        }
+      },
+      onPanResponderMove: (evt) => {
+        if (trackWidthRef.current > 0) {
+          const pos = Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidthRef.current));
+          onChange(snapToStep(pos));
+        }
+      },
+    }),
+  ).current;
+
+  const fillPct = `${positionFromValue(value) * 100}%` as any;
+
+  return (
+    <View style={{ paddingHorizontal: 8 }}>
+      <Text style={{ color: textColor, fontSize: 42, fontWeight: '800', textAlign: 'center', marginBottom: 4 }}>
+        {value}x
+      </Text>
+      <View
+        style={{ height: 48, justifyContent: 'center' }}
+        onLayout={e => { trackWidthRef.current = e.nativeEvent.layout.width; }}
+        {...panResponder.panHandlers}
+      >
+        <View style={{ height: 6, backgroundColor: trackBg, borderRadius: 3, overflow: 'hidden' }}>
+          <View style={{ height: 6, width: fillPct, backgroundColor: primaryColor, borderRadius: 3 }} />
+        </View>
+        {/* Step dots */}
+        {SPEED_STEPS.map((step, i) => (
+          <View
+            key={step}
+            style={{
+              position: 'absolute',
+              width: 14, height: 14, borderRadius: 7,
+              backgroundColor: value >= step ? primaryColor : 'transparent',
+              borderWidth: 2, borderColor: value >= step ? primaryColor : borderColor,
+              left: `${(i / stepCount) * 100}%` as any,
+              marginLeft: -7, top: 17,
+            }}
+          />
+        ))}
+        {/* Active thumb */}
+        <View style={{
+          position: 'absolute',
+          width: 24, height: 24, borderRadius: 12,
+          backgroundColor: primaryColor,
+          left: fillPct, marginLeft: -12, top: 12,
+          shadowColor: primaryColor, shadowOpacity: 0.5, shadowRadius: 6,
+          elevation: 4,
+        }} />
+      </View>
+      {/* Labels */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+        {SPEED_STEPS.map(step => (
+          <Text key={step} style={{ color: value === step ? primaryColor : labelColor, fontSize: 12, fontWeight: '700', width: 36, textAlign: 'center' }}>
+            {step}x
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 function ArtifactToggle({
   label, value, onValueChange, primaryColor, borderColor, textColor, rowStyle, labelStyle,
@@ -187,10 +284,12 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   useEffect(() => { markOpened(file.id); }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [showSpeed, setShowSpeed] = useState(false);
   const [showAppearance, setShowAppearance] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showAutoSkip, setShowAutoSkip] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState('');
   const [bookmarkFlash, setBookmarkFlash] = useState(false);
   const bookmarkFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (bookmarkFlashTimer.current) clearTimeout(bookmarkFlashTimer.current); }, []);
@@ -199,6 +298,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   const autoSkipDismiss   = useSwipeToDismiss(() => setShowAutoSkip(false));
   const bookmarksDismiss  = useSwipeToDismiss(() => setShowBookmarks(false));
   const voiceDismiss      = useSwipeToDismiss(() => setShowVoicePicker(false));
+  const speedDismiss      = useSwipeToDismiss(() => setShowSpeed(false));
   const appearanceDismiss = useSwipeToDismiss(() => setShowAppearance(false));
 
   const totalMs = totalDurationMs(sentenceTimings);
@@ -296,13 +396,10 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     }
   }, [isPlaying, play, pause]);
 
-  const handleSpeedCycle = useCallback(async () => {
-    const currentIdx = SPEED_OPTIONS.indexOf(playerSettings.playbackSpeed);
-    const nextIdx = (currentIdx + 1) % SPEED_OPTIONS.length;
-    const nextSpeed = SPEED_OPTIONS[nextIdx];
-    updatePlayerSettings({ playbackSpeed: nextSpeed });
-    await setSpeed(nextSpeed);
-  }, [playerSettings.playbackSpeed, updatePlayerSettings, setSpeed]);
+  const handleSpeedChange = useCallback(async (speed: number) => {
+    updatePlayerSettings({ playbackSpeed: speed });
+    await setSpeed(speed);
+  }, [updatePlayerSettings, setSpeed]);
 
   const toggleProps = {
     primaryColor: theme.colors.primary,
@@ -471,7 +568,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.speedBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-              onPress={handleSpeedCycle}
+              onPress={() => setShowSpeed(true)}
               activeOpacity={0.8}>
               <Text style={[styles.speedText, { color: theme.colors.textPrimary }]}>
                 {playerSettings.playbackSpeed}x
@@ -630,37 +727,100 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
         </Pressable>
       </Modal>
 
-      {/* ── Voice Picker Modal ── */}
+      {/* ── Voice Catalog Modal ── */}
       <Modal visible={showVoicePicker} transparent animationType="slide" onRequestClose={() => setShowVoicePicker(false)}>
         <Pressable style={styles.overlay} onPress={() => setShowVoicePicker(false)}>
-          <Animated.View style={[styles.sheet, { backgroundColor: theme.colors.surface, transform: [{ translateY: voiceDismiss.translateY }] }]} {...voiceDismiss.panResponder.panHandlers}
-            onStartShouldSetResponder={() => true}>
+          <Animated.View
+            style={[styles.sheet, styles.tallSheet, { backgroundColor: theme.colors.surface, transform: [{ translateY: voiceDismiss.translateY }] }]}
+            {...voiceDismiss.panResponder.panHandlers}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.handleWrap}>
               <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
             </View>
-            <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Select Language / Voice</Text>
-            {downloadedModels.length === 0 ? (
-              <View style={styles.emptyState}>
-                <VoiceIcon size={40} color={theme.colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                  No voices downloaded yet.{'\n'}Open a document to auto-download.
-                </Text>
-              </View>
-            ) : (
-              downloadedModels.map(m => (
-                <TouchableOpacity key={m.voiceDirName}
-                  style={[styles.voiceOption, { backgroundColor: theme.colors.darkerBg }]}
-                  onPress={() => { setVoice(m); setShowVoicePicker(false); }}>
-                  <View style={[styles.voiceAvatar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                    <VoiceIcon size={20} color={theme.colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{m.voiceLabel}</Text>
-                    <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>{m.label} · Piper VITS</Text>
-                  </View>
+            <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Voices</Text>
+            <View style={[styles.voiceSearchWrap, { backgroundColor: theme.colors.darkerBg, borderColor: theme.colors.border }]}>
+              <Search01Icon size={15} color={theme.colors.textSecondary} />
+              <TextInput
+                style={[styles.voiceSearchInput, { color: theme.colors.textPrimary }]}
+                placeholder="Search by name, language, or region…"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={voiceSearch}
+                onChangeText={setVoiceSearch}
+                autoCorrect={false}
+                selectionColor={theme.colors.primary}
+              />
+              {voiceSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setVoiceSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Cancel01Icon size={14} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
-              ))
-            )}
+              )}
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
+              {PIPER_MODELS
+                .filter(m => {
+                  const q = voiceSearch.toLowerCase();
+                  if (!q) return true;
+                  const regionCode = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
+                  return (
+                    m.voiceLabel.toLowerCase().includes(q) ||
+                    m.label.toLowerCase().includes(q) ||
+                    m.langCode.toLowerCase().includes(q) ||
+                    regionCode.toLowerCase().includes(q)
+                  );
+                })
+                .map(m => {
+                  const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
+                  const regionCode = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
+                  const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
+                  return (
+                    <TouchableOpacity
+                      key={m.voiceDirName}
+                      style={[styles.voiceOption, { backgroundColor: theme.colors.darkerBg }, isDownloaded && { borderLeftWidth: 3, borderLeftColor: theme.colors.primary }]}
+                      onPress={() => { setVoice(m); setShowVoicePicker(false); }}
+                      activeOpacity={0.75}
+                    >
+                      <View style={[styles.voiceAvatar, { backgroundColor: isDownloaded ? theme.colors.primary + '18' : theme.colors.surface, borderColor: isDownloaded ? theme.colors.primary : theme.colors.border }]}>
+                        <VoiceIcon size={20} color={isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.voiceName, { color: theme.colors.textPrimary }]}>{voiceName}</Text>
+                        <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
+                          {m.label}{regionCode ? ` · ${regionCode}` : ''}
+                          {isDownloaded ? '  ✓ Downloaded' : ''}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              }
+            </ScrollView>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      {/* ── Speed Modal ── */}
+      <Modal visible={showSpeed} transparent animationType="slide" onRequestClose={() => setShowSpeed(false)}>
+        <Pressable style={styles.overlay} onPress={() => setShowSpeed(false)}>
+          <Animated.View
+            style={[styles.sheet, { backgroundColor: theme.colors.surface, transform: [{ translateY: speedDismiss.translateY }] }]}
+            {...speedDismiss.panResponder.panHandlers}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.handleWrap}>
+              <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
+            </View>
+            <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>Playback Speed</Text>
+            <SpeedSlider
+              value={playerSettings.playbackSpeed}
+              onChange={handleSpeedChange}
+              primaryColor={theme.colors.primary}
+              borderColor={theme.colors.border}
+              trackBg={theme.colors.darkerBg}
+              textColor={theme.colors.textPrimary}
+              labelColor={theme.colors.textSecondary}
+            />
+            <View style={{ height: 16 }} />
           </Animated.View>
         </Pressable>
       </Modal>
@@ -864,6 +1024,12 @@ function makeStyles(theme: Theme) {
     voiceOption: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: 14, marginBottom: 8 },
     voiceName: { fontSize: 15, fontWeight: '700' },
     voiceSub: { fontSize: 12 },
+    voiceSearchWrap: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10,
+      marginBottom: 4,
+    },
+    voiceSearchInput: { flex: 1, fontSize: 14, padding: 0 },
   });
 }
 

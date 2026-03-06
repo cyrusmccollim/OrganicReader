@@ -19,7 +19,7 @@ export function buildSentenceTiming(
   startMs: number,
   durationMs: number,
 ): SentenceTiming {
-  const words = sentence.text.split(/\s+/).filter(w => w.length > 0);
+  const words = sentence.ttsText.split(/\s+/).filter(w => w.length > 0);
   const totalChars = words.reduce((s, w) => s + w.length, 0);
   const wordTimings: WordTiming[] = [];
 
