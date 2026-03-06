@@ -42,7 +42,9 @@ async function downloadFile(
 }
 
 async function ensureEspeakData(onProgress?: (fraction: number) => void): Promise<void> {
-  if (await RNFS.exists(ESPEAK_MARKER)) return;
+  if (await RNFS.exists(ESPEAK_MARKER) && await RNFS.exists(ESPEAK_DIR)) return;
+  // Marker exists but dir is missing — previous install was corrupt; start over
+  await RNFS.unlink(ESPEAK_MARKER).catch(() => {});
 
   const archive = `${MODELS_DIR}/espeak-ng-data.zip`;
   if (!await RNFS.exists(archive)) {
