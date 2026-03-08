@@ -1,6 +1,6 @@
 # OrganicReader
 
-A mobile reading app that turns your documents into natural speech. Built with React Native, fully offline, no subscriptions.
+A mobile reading app that turns documents into natural speech. Built with React Native, fully offline, no subscriptions or distractions.
 
 <div align="center">
   <img src="screenshots/Home.jpg" width="18%" />
@@ -14,14 +14,14 @@ A mobile reading app that turns your documents into natural speech. Built with R
 
 ## What it does
 
-Import a PDF, EPUB, DOCX, or TXT — then read it or listen to it. The TTS engine runs entirely on-device using [Piper](https://github.com/rhasspy/piper) neural voices, so nothing leaves your phone.
+Import a PDF, EPUB, DOCX, or TXT, then read it or listen to it. The TTS engine runs entirely on-device using [Piper](https://github.com/rhasspy/piper) neural voices, so nothing leaves the phone.
 
-- **On-device TTS** — 30+ natural voices across a dozen languages, zero cloud calls
-- **Sentence-level highlighting** — text tracks audio in real time as it plays
-- **Multiple formats** — PDF, EPUB, DOCX, TXT, web links, photos, scans
-- **Reading stats** — streaks, weekly hours, per-document progress
-- **Appearance** — Light, Dark, Sepia, and Organic themes; 6 font choices; adjustable size
-- **Fully offline** — works without internet after initial model download
+- **On-device TTS:** 30+ natural voices across a dozen languages, zero cloud calls
+- **Sentence-level highlighting:** text tracks audio in real time as it plays
+- **Multiple formats:** PDF, EPUB, DOCX, TXT, web links, photos, scans
+- **Reading stats:** streaks, weekly hours, per-document progress
+- **Appearance:** Light, Dark, Sepia, and Organic themes; 6 font choices; adjustable size
+- **Fully offline:** works without internet after initial model download
 
 ## Stack
 
