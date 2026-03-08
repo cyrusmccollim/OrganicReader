@@ -1,18 +1,42 @@
-# OrganicReader (WIP)
+# OrganicReader
 
-A mobile/web application that transforms your documents into natural speech, with a clean UI and distraction free experience.
+A mobile reading app that turns your documents into natural speech. Built with React Native, fully offline, no subscriptions.
 
-## (Planned) Features
+<div align="center">
+  <img src="screenshots/Home.jpg" width="18%" />
+  <img src="screenshots/Library.jpg" width="18%" />
+  <img src="screenshots/Playback.jpg" width="18%" />
+  <img src="screenshots/Voices.jpg" width="18%" />
+  <img src="screenshots/AppearanceSettings.jpg" width="18%" />
+</div>
 
-- **Natural AI Reading**: Human-like speech synthesis powered by MeloTTS.
-- **Multiple Format Support**: Import PDF, DOCX, TXT, EPUB, and more from local files.
-- **Reading Assistant**: Chat with a LLM to summarize documents, ask questions, and explore content.
-- **Library Management**: Organize reading with progress tracking, type-coded badges, and search/filter capabilities.
-- **Focus**: Daily reading goals, streak tracking, and distraction removal.
-- **Offline**: Designed to work offline and without intrusive ads.
+---
 
-## Building With
+## What it does
 
-- **React Native** - Core framework
-- **MeloTTS** - High-quality speech synthesis
+Import a PDF, EPUB, DOCX, or TXT — then read it or listen to it. The TTS engine runs entirely on-device using [Piper](https://github.com/rhasspy/piper) neural voices, so nothing leaves your phone.
 
+- **On-device TTS** — 30+ natural voices across a dozen languages, zero cloud calls
+- **Sentence-level highlighting** — text tracks audio in real time as it plays
+- **Multiple formats** — PDF, EPUB, DOCX, TXT, web links, photos, scans
+- **Reading stats** — streaks, weekly hours, per-document progress
+- **Appearance** — Light, Dark, Sepia, and Organic themes; 6 font choices; adjustable size
+- **Fully offline** — works without internet after initial model download
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Framework | React Native (TypeScript) |
+| TTS engine | `react-native-sherpa-onnx-offline-tts` (Piper ONNX models) |
+| Audio playback | `react-native-track-player` |
+| File I/O | `react-native-fs`, `react-native-zip-archive` |
+| State | React Context (Theme, Library, Auth, Playback, TTS) |
+
+## Architecture notes
+
+Documents of all types (PDF, EPUB, DOCX) are extracted to plain text and rendered through a single `TxtViewer` component — a React Native `ScrollView` with native `Text` nodes, no WebViews. The TTS pipeline segments text, generates WAV chunks ahead of the playback cursor via a buffer, and feeds them to a Track Player queue. Speed control is handled at the player layer (`setRate`), keeping generation fast regardless of playback speed.
+
+## Status
+
+Active development. Core reading and TTS are fully working. Chat assistant and cloud sync are planned.
