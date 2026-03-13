@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrganicReader - Listen to Your Documents Naturally</title>
+    <meta name="description" content="Transform any document into natural speech. OrganicReader uses on-device AI to read PDFs, EPUBs, and more with 30+ neural voices, entirely offline and private.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <nav class="nav" id="nav">
+        <div class="nav-inner">
+            <a href="index.html" class="nav-brand">
+                <div class="nav-logo">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                </div>
+                OrganicReader
+            </a>
+            <div class="nav-links" id="navLinks">
+                <li><a href="index.html" class="active">Home</a></li>
+                <li><a href="features.html">Features</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank" class="nav-cta">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download
+                </a></li>
+            </div>
+            <button class="mobile-toggle" id="mobileToggle" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="container">
+            <div class="hero-grid">
+                <div class="hero-content">
+                    <div class="hero-badge fade-in">
+                        <span class="hero-badge-dot"></span>
+                        Open Source &amp; Free
+                    </div>
+                    <h1 class="fade-in fade-in-delay-1">Listen to your documents <span class="gradient-text">naturally</span></h1>
+                    <p class="hero-subtitle fade-in fade-in-delay-2">Transform PDFs, EPUBs, and documents into natural speech with 30+ AI voices. Completely on-device, completely private, completely free.</p>
+                    <div class="hero-actions fade-in fade-in-delay-3">
+                        <a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank" class="btn-primary">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download for Free
+                        </a>
+                        <a href="features.html" class="btn-secondary">
+                            Explore Features
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        </a>
+                    </div>
+                </div>
+                <div class="hero-image fade-in fade-in-delay-2">
+                    <div class="hero-phone-bg"></div>
+                    <img src="../files/OrganicReader/Playback.png" alt="OrganicReader playback screen showing natural text-to-speech" class="hero-phone">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="stats-bar">
+        <div class="container">
+            <div class="stats-grid">
+                <div class="stat-item fade-in">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    </div>
+                    <div class="stat-value">30+</div>
+                    <div class="stat-label">Neural Voices</div>
+                </div>
+                <div class="stat-item fade-in fade-in-delay-1">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="stat-value">6</div>
+                    <div class="stat-label">File Formats</div>
+                </div>
+                <div class="stat-item fade-in fade-in-delay-2">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <div class="stat-value">100%</div>
+                    <div class="stat-label">On-Device &amp; Private</div>
+                </div>
+                <div class="stat-item fade-in fade-in-delay-3">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    </div>
+                    <div class="stat-value">12+</div>
+                    <div class="stat-label">Languages Supported</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-label">Features</span>
+                <h2 class="section-title">Everything you need to listen smarter</h2>
+                <p class="section-subtitle">Powerful features designed to make reading through listening effortless, natural, and enjoyable.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    </div>
+                    <h3>Natural AI Voices</h3>
+                    <p>Powered by Sherpa ONNX neural models, choose from over 30 voices across a dozen languages that sound remarkably human.</p>
+                </div>
+                <div class="feature-card fade-in fade-in-delay-1">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    </div>
+                    <h3>Universal Format Support</h3>
+                    <p>Import PDFs, EPUBs, DOCX, TXT files, web links, photos, and scanned documents. Read anything, anywhere.</p>
+                </div>
+                <div class="feature-card fade-in fade-in-delay-2">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <h3>Reading Streaks &amp; Progress</h3>
+                    <p>Track your daily reading habits with streaks, weekly listening hours, and per-document progress to stay motivated.</p>
+                </div>
+                <div class="feature-card fade-in fade-in-delay-3">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <h3>Distraction-Free Reading</h3>
+                    <p>Clean, minimal interface with four themes, six font options, and real-time sentence highlighting to keep you focused.</p>
+                </div>
+                <div class="feature-card fade-in fade-in-delay-4">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <h3>Completely Private</h3>
+                    <p>All processing happens on your device. Zero cloud calls, zero data collection. Your documents stay yours.</p>
+                </div>
+                <div class="feature-card fade-in fade-in-delay-4">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <h3>Works Offline</h3>
+                    <p>Once voice models are downloaded, everything runs locally. Listen on planes, in subways, or anywhere without internet.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-label">How It Works</span>
+                <h2 class="section-title">Start listening in seconds</h2>
+                <p class="section-subtitle">Three simple steps to transform how you consume written content.</p>
+            </div>
+            <div class="steps-grid">
+                <div class="step-card fade-in">
+                    <div class="step-number">1</div>
+                    <h3>Import</h3>
+                    <p>Add documents from your files, type text directly, scan physical pages, paste web links, or import photos.</p>
+                </div>
+                <div class="step-card fade-in fade-in-delay-1">
+                    <div class="step-number">2</div>
+                    <h3>Listen</h3>
+                    <p>Choose from 30+ natural AI voices, adjust playback speed, and follow along with real-time sentence highlighting.</p>
+                </div>
+                <div class="step-card fade-in fade-in-delay-2">
+                    <div class="step-number">3</div>
+                    <h3>Track Progress</h3>
+                    <p>Build daily reading streaks, monitor your weekly listening hours, and pick up right where you left off.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="screenshots section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-label">App Preview</span>
+                <h2 class="section-title">Beautifully designed, inside and out</h2>
+                <p class="section-subtitle">A clean, intuitive interface that puts your content first and gets out of the way.</p>
+            </div>
+            <div class="screenshots-showcase">
+                <div class="screenshot-item fade-in">
+                    <img src="../files/OrganicReader/Home.png" alt="OrganicReader home screen with reading streaks and document import">
+                </div>
+                <div class="screenshot-item fade-in fade-in-delay-1">
+                    <img src="../files/OrganicReader/Library.png" alt="OrganicReader library with document management and filters">
+                </div>
+                <div class="screenshot-item fade-in fade-in-delay-2">
+                    <img src="../files/OrganicReader/Playback.png" alt="OrganicReader playback view with sentence highlighting">
+                </div>
+                <div class="screenshot-item fade-in fade-in-delay-3">
+                    <img src="../files/OrganicReader/Voices.png" alt="OrganicReader voice selection across multiple languages">
+                </div>
+                <div class="screenshot-item fade-in fade-in-delay-4">
+                    <img src="../files/OrganicReader/Settings.png" alt="OrganicReader settings with themes and customization">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to start listening?</h2>
+                <p>Join readers who've discovered a better way to consume their documents. Free, open source, and private by design.</p>
+                <div class="cta-actions">
+                    <a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank" class="btn-white">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download OrganicReader
+                    </a>
+                    <a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank" class="btn-ghost-white">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        View on GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <div class="footer-brand">
+                        <div class="footer-brand-logo">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        </div>
+                        OrganicReader
+                    </div>
+                    <p class="footer-desc">Transform any document into natural speech. Open source, privacy-first, and powered by on-device AI.</p>
+                    <div class="footer-social">
+                        <a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank" aria-label="GitHub">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        </a>
+                    </div>
+                </div>
+                <div class="footer-col">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="features.html">Features</a></li>
+                        <li><a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank">Download</a></li>
+                        <li><a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank">Changelog</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="about.html">About</a></li>
+                        <li><a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank">Open Source</a></li>
+                        <li><a href="mailto:contact@cyrusmccollim.dev">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Developer</h4>
+                    <ul>
+                        <li><a href="https://github.com/cyrusmccollim/OrganicReader" target="_blank">GitHub</a></li>
+                        <li><a href="https://cyrusmccollim.dev" target="_blank">Creator</a></li>
+                        <li><a href="https://www.linkedin.com/in/cyrusmccollim" target="_blank">LinkedIn</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <span>&copy; 2026 OrganicReader. Open source under GPL-3.0.</span>
+                <span>Made by <a href="https://cyrusmccollim.dev" target="_blank">Cyrus McCollim</a></span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const nav = document.getElementById('nav');
+        const mobileToggle = document.getElementById('mobileToggle');
+        const navLinks = document.getElementById('navLinks');
+
+        window.addEventListener('scroll', function() {
+            if (window.scrollY > 20) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        }, { passive: true });
+
+        mobileToggle.addEventListener('click', function() {
+            navLinks.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!nav.contains(e.target)) {
+                navLinks.classList.remove('open');
+            }
+        });
+
+        const fadeEls = document.querySelectorAll('.fade-in');
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+        fadeEls.forEach(function(el) {
+            observer.observe(el);
+        });
+    </script>
+
+</body>
+</html>
