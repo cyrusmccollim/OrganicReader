@@ -119,10 +119,11 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     positionWithinFileRef.current = 0;
   }, []);
 
-  const onSegmentReady = useCallback((segment: BufferSegment) => {
-    // push() instead of spread — O(1) vs O(n) for long documents
-    timingsRef.current.push(segment.timing);
+  const onSegmentGenerated = useCallback((timing: SentenceTiming) => {
+    timingsRef.current.push(timing);
+  }, []);
 
+  const onSegmentReady = useCallback((segment: BufferSegment) => {
     activeTimingRef.current = segment.timing;
     setActiveSentenceTiming(segment.timing);
     setActiveSentenceIndex(segment.sentenceIndex);
@@ -223,10 +224,11 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
       fromIndex > 0 ? sents.slice(fromIndex) : sents,
       sampleRateRef.current,
       onSegmentReady,
+      onSegmentGenerated,
       onBufferError,
     );
     bufferRef.current.start(0, 0);
-  }, [flushBuffer, onSegmentReady, onBufferError]);
+  }, [flushBuffer, onSegmentReady, onSegmentGenerated, onBufferError]);
 
   const play = useCallback(async () => {
     if (ttsState === 'downloading' || ttsState === 'loading') return;
@@ -265,6 +267,14 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     const sents = sentencesRef.current;
     if (index < 0 || index >= sents.length) return;
 
+    // Fast path: segment already synthesized — skip to it instantly, no re-synthesis.
+    if (bufferRef.current?.seekTo(index)) {
+      setActiveSentenceIndex(index);
+      setProgressFraction(sents[index].charStart / totalCharsRef.current);
+      return;
+    }
+
+    // Slow path: flush and re-synthesize from the target sentence.
     setTtsState('seeking');
     startBuffer(index);
     setActiveSentenceIndex(index);

@@ -18,6 +18,7 @@ export class TTSBuffer {
   private sentences: Sentence[];
   private sampleRate: number;
   private onSegmentReady: (segment: BufferSegment) => void;
+  private onSegmentGenerated: (timing: SentenceTiming) => void;
   private onError: (err: Error) => void;
 
   private cancelled = false;
@@ -39,11 +40,13 @@ export class TTSBuffer {
     sentences: Sentence[],
     sampleRate: number,
     onSegmentReady: (segment: BufferSegment) => void,
+    onSegmentGenerated: (timing: SentenceTiming) => void,
     onError: (err: Error) => void,
   ) {
     this.sentences = sentences;
     this.sampleRate = sampleRate;
     this.onSegmentReady = onSegmentReady;
+    this.onSegmentGenerated = onSegmentGenerated;
     this.onError = onError;
   }
 
@@ -60,6 +63,29 @@ export class TTSBuffer {
     });
 
     this.runLoop();
+  }
+
+  // Seek to an already-synthesized sentence without re-synthesis.
+  // Returns true if the sentence was found in the ready queue (fast path),
+  // false if the caller must flush and restart synthesis.
+  seekTo(sentenceIndex: number): boolean {
+    const idx = this.readySegments.findIndex(s => s.index === sentenceIndex);
+    if (idx === -1) return false;
+
+    // Delete files for skipped segments.
+    const skipped = this.readySegments.splice(0, idx);
+    skipped.forEach(s => deleteTempFile(s.path).catch(() => {}));
+
+    // Stop current audio (does not fire AudioPlaybackComplete).
+    this.isPlaying = false;
+    SimpleAudio.stop().catch(() => {});
+
+    // Unblock the generation loop if it was waiting for a free slot.
+    this.loopSignal?.();
+    this.loopSignal = null;
+
+    this.playNextReady();
+    return true;
   }
 
   private handleComplete() {
@@ -81,7 +107,6 @@ export class TTSBuffer {
     });
 
     // Pre-warm the player for the NEXT segment while the current one is playing.
-    // This eliminates the decode/hardware-acquire latency gap between segments.
     const upcoming = this.readySegments[0];
     if (upcoming) {
       SimpleAudio.preWarm(upcoming.path);
@@ -110,6 +135,10 @@ export class TTSBuffer {
         const timing = buildSentenceTiming(sentence, startMs, segment.durationMs);
         this.cumulativeMs += segment.durationMs;
         this.nextGenIndex++;
+
+        // Notify TTSContext of the timing as soon as it's generated — this lets
+        // jumpSeconds find forward-buffered sentences without waiting for them to play.
+        this.onSegmentGenerated(timing);
 
         this.readySegments.push({ index: sentence.index, timing, path: segment.audioPath });
         this.playNextReady();

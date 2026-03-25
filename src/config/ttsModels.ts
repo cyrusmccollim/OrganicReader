@@ -224,8 +224,11 @@ export const PIPER_MODELS: TTSModelEntry[] = [
   piper('ne', 'ne', 'Nepali', 'Sita (NP)',   'ne_NP-google-medium', 'ne_NP-google-medium.onnx', 63_000_000, 22050),
 ];
 
-// Combined list — MeloTTS first (higher quality)
-export const ALL_MODELS: TTSModelEntry[] = [...MELO_MODELS, ...PIPER_MODELS];
+// Combined list — alphabetical by language then voice label (no engine priority)
+export const ALL_MODELS: TTSModelEntry[] = [...MELO_MODELS, ...PIPER_MODELS].sort((a, b) => {
+  const langCmp = a.label.localeCompare(b.label);
+  return langCmp !== 0 ? langCmp : a.voiceLabel.localeCompare(b.voiceLabel);
+});
 
 // Auto-detection only picks Piper voices (no surprise downloads).
 // MeloTTS is only used when the user explicitly selects it.

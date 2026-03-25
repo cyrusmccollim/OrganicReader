@@ -58,9 +58,7 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
                     true
                 }
                 mp.prepare()
-                mp.playbackParams = PlaybackParams()
-                    .setSpeed(rate)
-                    .setAudioStretchMode(PlaybackParams.AUDIO_STRETCH_MODE_VOICE)
+                mp.playbackParams = PlaybackParams().setSpeed(rate)
                 mp.start()
                 player = mp
                 startProgress()
@@ -127,9 +125,7 @@ class SimpleAudioModule(reactContext: ReactApplicationContext) :
         handler.post {
             rate = newRate.toFloat()
             try {
-                player?.playbackParams = PlaybackParams()
-                    .setSpeed(rate)
-                    .setAudioStretchMode(PlaybackParams.AUDIO_STRETCH_MODE_VOICE)
+                player?.playbackParams = PlaybackParams().setSpeed(rate)
                 promise.resolve(null)
             } catch (e: Exception) {
                 promise.reject("AUDIO_ERROR", e.message)
