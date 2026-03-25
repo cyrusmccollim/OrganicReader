@@ -172,9 +172,10 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await SimpleAudio.stop();
-      await cleanTmpDir();
-
-      const alreadyDownloaded = await isDownloadedAsync(entry);
+      const [, alreadyDownloaded] = await Promise.all([
+        cleanTmpDir(),
+        isDownloadedAsync(entry),
+      ]);
       if (!alreadyDownloaded) {
         setTtsState('downloading');
         setDownloadLanguage(entry.voiceLabel);
