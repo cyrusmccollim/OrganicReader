@@ -38,13 +38,16 @@ class SimpleAudio: RCTEventEmitter {
 
         self.stopProgressTimer()
 
+        // Always stop the current player before switching
+        self.player?.stop()
+        self.player = nil
+
         // Re-use pre-warmed player if it matches this path, otherwise create fresh
         let p: AVAudioPlayer
         if let warm = self.nextPlayer, warm.url == url {
           p = warm
           self.nextPlayer = nil
         } else {
-          self.player?.stop()
           p = try AVAudioPlayer(contentsOf: url)
           p.enableRate = true
           p.prepareToPlay()

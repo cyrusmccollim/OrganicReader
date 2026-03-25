@@ -37,6 +37,8 @@ type InlineNode = { kind: 'literal'; text: string } | { kind: 'sent'; si: number
 
 // ─── Active sentence: maintains its own word-index state via direct SimpleAudio subscription.
 // Only THIS component re-renders on each AudioProgress tick -- not TxtViewer, not PlaybackScreen.
+// ─── Active sentence: maintains its own word-index state via direct SimpleAudio subscription.
+// Only THIS component re-renders on each AudioProgress tick -- not TxtViewer, not PlaybackScreen.
 const ActiveSentence = React.memo(function ActiveSentence({
   displayText,
   timing,
@@ -52,34 +54,41 @@ const ActiveSentence = React.memo(function ActiveSentence({
 }) {
   const [wordIdx, setWordIdx] = useState(0);
 
+  // Split into tokens (words at even indices, spaces at odd) once per displayText change.
+  const tokens = useMemo(() => displayText.split(/(\s+)/), [displayText]);
+  // Non-space word count for the fraction calculation.
+  const wordCount = Math.ceil(tokens.length / 2);
+
+  // Refs so the single progress subscription always sees current values.
+  const durationMsRef = useRef(timing.durationMs);
+  const wordCountRef = useRef(wordCount);
+  durationMsRef.current = timing.durationMs;
+  wordCountRef.current = wordCount;
+
+  // Reset to word 0 when a new sentence becomes active.
+  useEffect(() => { setWordIdx(0); }, [timing]);
+
+  // Subscribe once on mount. Uses posMs / durationMs fraction across display words.
+  // This is correct regardless of auto-skip word-count differences between ttsText and displayText.
   useEffect(() => {
-    setWordIdx(0);
-    const wt = timing.wordTimings;
     const sub = SimpleAudio.onProgress((posMs) => {
-      // Lead offset: highlight the next word ~200ms early so it feels in sync
-      const absoluteMs = timing.startMs + posMs + 200;
-      // Binary search — O(log n) vs O(n) linear scan
-      let lo = 0, hi = wt.length - 1, w = 0;
-      while (lo <= hi) {
-        const mid = (lo + hi) >>> 1;
-        if (wt[mid].startMs <= absoluteMs) { w = mid; lo = mid + 1; }
-        else hi = mid - 1;
-      }
-      setWordIdx(w);
+      const dur = durationMsRef.current;
+      const count = wordCountRef.current;
+      if (dur <= 0 || count === 0) return;
+      const next = Math.min(Math.floor((posMs / dur) * count), count - 1);
+      setWordIdx(prev => (prev === next ? prev : next));
     });
     return () => sub.remove();
-  }, [timing]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const words = displayText.split(/(\s+)/);
   return (
-    // Soft sentence-level background -- entire span highlighted
     <Text suppressHighlighting onPress={onPress} style={sentenceHighlightStyle}>
-      {words.map((word, wi) => {
-        if (wi % 2 === 1) return <Text key={wi}>{word}</Text>;
-        const isActiveWord = Math.floor(wi / 2) === wordIdx;
+      {tokens.map((token, wi) => {
+        if (wi % 2 === 1) return <Text key={wi}>{token}</Text>;
+        const isActive = Math.floor(wi / 2) === wordIdx;
         return (
-          <Text key={wi} style={isActiveWord ? wordHighlightStyle : undefined}>
-            {word}
+          <Text key={wi} style={isActive ? wordHighlightStyle : undefined}>
+            {token}
           </Text>
         );
       })}
