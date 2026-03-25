@@ -23,7 +23,7 @@ import { DocumentViewer } from '../components/DocumentViewer';
 import { TextEditModal } from '../components/TextEditModal';
 import { useLibrary } from '../context/LibraryContext';
 import { usePlayback, ReaderTheme, ReaderFont, FONT_FAMILIES } from '../context/PlaybackContext';
-import { PIPER_MODELS, getLanguageLabels } from '../config/ttsModels';
+import { ALL_MODELS, getLanguageLabels, modelKey } from '../config/ttsModels';
 import { useTTS } from '../context/TTSContext';
 import { useTextFileCreator } from '../hooks/useTextFileCreator';
 import { extractPdfText, extractDocxText, extractEpubText } from '../utils/extractText';
@@ -223,7 +223,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     sentences, activeSentenceIndex, activeSentenceTiming,
     progressFraction, totalEstimatedMs, totalChars,
     downloadedModels, activeModelEntry,
-    initTTS, play, pause, stop, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice,
+    initTTS, play, pause, stop, seekToFraction, seekToSentence, jumpSeconds, setSpeed, setVoice, cancelDownload,
   } = useTTS();
   const { createTextFile } = useTextFileCreator();
 
@@ -478,16 +478,15 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
   // Filtered voices for voice catalog
   const filteredVoices = useMemo(() => {
     const q = voiceSearch.toLowerCase();
-    return PIPER_MODELS.filter(m => {
+    return ALL_MODELS.filter(m => {
       const langMatch = selectedLangTab === 'All' || m.label === selectedLangTab;
       if (!langMatch) return false;
       if (!q) return true;
-      const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
       return (
         m.voiceLabel.toLowerCase().includes(q) ||
         m.label.toLowerCase().includes(q) ||
         m.langCode.toLowerCase().includes(q) ||
-        region.toLowerCase().includes(q)
+        m.engine.includes(q)
       );
     });
   }, [voiceSearch, selectedLangTab]);
@@ -586,7 +585,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
         <View style={[styles.downloadOverlay, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={[styles.downloadText, { color: '#fff' }]}>
-            Downloading {downloadLanguage?.toUpperCase()} voice model…
+            Downloading {downloadLanguage} voice model…
           </Text>
           <View style={[styles.downloadBar, { backgroundColor: theme.colors.border }]}>
             <View style={[styles.downloadFill, { width: `${downloadProgress * 100}%` as any, backgroundColor: theme.colors.primary }]} />
@@ -594,6 +593,13 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
           <Text style={[styles.downloadPct, { color: theme.colors.textSecondary }]}>
             {Math.round(downloadProgress * 100)}%
           </Text>
+          <TouchableOpacity
+            onPress={cancelDownload}
+            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -888,14 +894,16 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
               ) : (
                 <View style={[styles.settingsCard, { marginBottom: 24 }]}>
                   {filteredVoices.map((m, idx) => {
-                    const isSelected = m.voiceDirName === activeModelEntry?.voiceDirName;
+                    const key = modelKey(m);
+                    const activeKey = activeModelEntry ? modelKey(activeModelEntry) : '';
+                    const isSelected = key === activeKey;
                     const isDownloaded = downloadedModels.some(d => d.voiceDirName === m.voiceDirName);
-                    const region = m.modelOnnxName.split('.')[0].split('-')[0].split('_')[1] ?? '';
                     const voiceName = m.voiceLabel.replace(/\s*\([^)]+\)/g, '').trim();
                     const isLast = idx === filteredVoices.length - 1;
+                    const isMelo = m.engine === 'melo';
                     return (
                       <TouchableOpacity
-                        key={m.voiceDirName}
+                        key={key}
                         style={[
                           styles.voiceCatalogRow,
                           !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
@@ -922,16 +930,27 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                           <VoiceIcon size={18} color={isSelected || isDownloaded ? theme.colors.primary : theme.colors.textSecondary} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={[
-                            styles.voiceName,
-                            { color: isSelected ? theme.colors.primary : theme.colors.textPrimary },
-                            isSelected && { fontWeight: '800' },
-                          ]}>
-                            {voiceName}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={[
+                              styles.voiceName,
+                              { color: isSelected ? theme.colors.primary : theme.colors.textPrimary },
+                              isSelected && { fontWeight: '800' },
+                            ]}>
+                              {voiceName}
+                            </Text>
+                            {isMelo && (
+                              <View style={{
+                                backgroundColor: theme.colors.primary + '20',
+                                paddingHorizontal: 5, paddingVertical: 1,
+                                borderRadius: 4,
+                              }}>
+                                <Text style={{ color: theme.colors.primary, fontSize: 9, fontWeight: '800' }}>MELO</Text>
+                              </View>
+                            )}
+                          </View>
                           <Text style={[styles.voiceSub, { color: theme.colors.textSecondary }]}>
                             {selectedLangTab === 'All' ? `${m.label} · ` : ''}
-                            {region || m.langCode.toUpperCase()}
+                            {m.langCode.toUpperCase()}
                             {isDownloaded && !isSelected && (
                               <Text style={{ color: theme.colors.primary + 'AA' }}> · Downloaded</Text>
                             )}
@@ -1188,9 +1207,10 @@ function makeStyles(theme: Theme) {
       marginBottom: 8,
     },
     voiceSearchInput: { flex: 1, fontSize: 14, padding: 0 },
-    langTabBar: { flexGrow: 0, marginBottom: 4 },
-    langTabBarContent: { gap: 8, paddingVertical: 4 },
+    langTabBar: { flexGrow: 0, flexShrink: 0, minHeight: 42, marginBottom: 4 },
+    langTabBarContent: { gap: 8, paddingVertical: 4, paddingHorizontal: 2, alignItems: 'center' as const },
     langTab: {
+      flexShrink: 0,
       paddingHorizontal: 14, paddingVertical: 7,
       borderRadius: 20, borderWidth: 1,
     },
