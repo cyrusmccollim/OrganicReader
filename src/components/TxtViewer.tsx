@@ -127,10 +127,10 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
   const [activeSearch, setActiveSearch] = useState('');
   const [searchCurrent, setSearchCurrent] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const scrollInnerRef = useRef<View>(null);
   const contentHeightRef = useRef(0);
-  const scrollOffsetRef = useRef(0);
   const scrollViewHeightRef = useRef(0);
-  const sentenceLayoutsRef = useRef<number[]>([]);
+  const lineViewRefs = useRef<Map<number, View>>(new Map());
 
   const normalize = (t: string) => t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
@@ -147,14 +147,17 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       .catch(e => setError('Could not read file: ' + e.message));
   }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll: keep the active sentence vertically centered.
+  // Auto-scroll: measure the active line's position and center it.
   useEffect(() => {
     if (!ttsMode || activeSentenceIndex === undefined) return;
-    const sentY = sentenceLayoutsRef.current[activeSentenceIndex];
-    if (sentY === undefined) return;
     const height = scrollViewHeightRef.current;
     if (height === 0) return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, sentY - height * 0.5), animated: true });
+    const lineView = lineViewRefs.current.get(activeSentenceIndex);
+    const inner = scrollInnerRef.current;
+    if (!lineView || !inner) return;
+    lineView.measureLayout(inner, (_x, y) => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - height * 0.4), animated: true });
+    }, () => {});
   }, [ttsMode, activeSentenceIndex]);
 
   // Compute match positions for search
@@ -243,7 +246,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
     ];
 
     return (
-      <View>
+      <View ref={scrollInnerRef}>
         {ttsLines.map((line, li) => {
           if (line.length === 0) {
             return <View key={`line-${li}`} style={{ height: fontSize * 0.8 }} />;
@@ -256,10 +259,10 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
           return (
             <View
               key={`line-${li}`}
-              onLayout={(e) => {
-                const y = e.nativeEvent.layout.y;
+              ref={(v) => {
                 for (const si of sentIndicesInLine) {
-                  sentenceLayoutsRef.current[si] = y;
+                  if (v) lineViewRefs.current.set(si, v);
+                  else lineViewRefs.current.delete(si);
                 }
               }}
             >
@@ -364,9 +367,7 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       style={[styles.scroll, { backgroundColor: readerTheme.bg }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
-      scrollEventThrottle={100}
       onLayout={(e) => { scrollViewHeightRef.current = e.nativeEvent.layout.height; }}
-      onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
       onContentSizeChange={(_, h) => { contentHeightRef.current = h; }}
     >
       {ttsMode && sentences ? renderTTSContent() : renderSearchContent()}
