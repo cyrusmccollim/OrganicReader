@@ -11,27 +11,6 @@ export interface BufferSegment {
 }
 
 const LOOKAHEAD = 3;
-const CONCURRENCY = 2;
-
-interface SynthResult {
-  audioPath: string;
-  durationMs: number;
-  sentence: Sentence;
-}
-
-/** Simple broadcast: all current waiters are woken on notify(). */
-class Signal {
-  private waiters: Array<() => void> = [];
-
-  wait(): Promise<void> {
-    return new Promise(resolve => this.waiters.push(resolve));
-  }
-
-  notify() {
-    const w = this.waiters.splice(0);
-    w.forEach(fn => fn());
-  }
-}
 
 export class TTSBuffer {
   private sentences: Sentence[];
@@ -44,11 +23,13 @@ export class TTSBuffer {
   private nextGenIndex = 0;
   private cumulativeMs = 0;
 
+  // Generated segments waiting to be played
   private readySegments: Array<{ index: number; timing: SentenceTiming; path: string }> = [];
   private isPlaying = false;
   private generatedPaths: string[] = [];
 
-  private signal = new Signal();
+  // Wakes the generator loop when a segment is consumed
+  private loopSignal: (() => void) | null = null;
 
   private completionSub: EmitterSubscription | null = null;
   private errorSub: EmitterSubscription | null = null;
@@ -71,10 +52,7 @@ export class TTSBuffer {
     this.cumulativeMs = fromMs;
 
     this.completionSub = SimpleAudio.onComplete(() => {
-      if (this.cancelled) return;
-      this.isPlaying = false;
-      this.signal.notify();
-      this.playNextReady();
+      if (!this.cancelled) this.handleComplete();
     });
     this.errorSub = SimpleAudio.onError((err) => {
       if (!this.cancelled) this.onError(new Error(err));
@@ -83,11 +61,18 @@ export class TTSBuffer {
     this.runLoop();
   }
 
+  private handleComplete() {
+    this.isPlaying = false;
+    this.loopSignal?.();  // wake generator if it was waiting
+    this.playNextReady();
+  }
+
   private playNextReady() {
     if (this.isPlaying || this.readySegments.length === 0 || this.cancelled) return;
     const next = this.readySegments.shift()!;
     this.isPlaying = true;
 
+    // Fire onSegmentReady BEFORE play so UI highlights the sentence immediately
     this.onSegmentReady({ sentenceIndex: next.index, timing: next.timing, audioPath: next.path });
     SimpleAudio.play(next.path).catch((e) => {
       this.isPlaying = false;
@@ -95,68 +80,37 @@ export class TTSBuffer {
     });
   }
 
-  private async synthesizeOne(sentence: Sentence): Promise<SynthResult | undefined> {
-    try {
-      const segment = await synthesize(sentence.ttsText, this.sampleRate);
-      if (this.cancelled) {
-        deleteTempFile(segment.audioPath).catch(() => {});
-        return undefined;
-      }
-      this.generatedPaths.push(segment.audioPath);
-      return { audioPath: segment.audioPath, durationMs: segment.durationMs, sentence };
-    } catch (e) {
-      if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
-      return undefined;
-    }
-  }
-
   private async runLoop() {
     if (this.running || this.cancelled) return;
     this.running = true;
 
-    const results = new Map<number, SynthResult>();
-    let nextFlushIdx = this.nextGenIndex;
+    while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
+      // Throttle: don't build up more than LOOKAHEAD segments
+      if (this.readySegments.length >= LOOKAHEAD) {
+        await new Promise<void>(resolve => { this.loopSignal = resolve; });
+        this.loopSignal = null;
+        continue;
+      }
 
-    const worker = async () => {
-      while (!this.cancelled) {
-        // Back off while ready queue is full
-        while (this.readySegments.length >= LOOKAHEAD && !this.cancelled) {
-          await this.signal.wait();
-        }
-        if (this.cancelled) break;
+      const sentence = this.sentences[this.nextGenIndex];
+      const startMs = this.cumulativeMs;
 
-        const idx = this.nextGenIndex;
-        if (idx >= this.sentences.length) break;
+      try {
+        const segment = await synthesize(sentence.ttsText, this.sampleRate);
+        if (this.cancelled) { await deleteTempFile(segment.audioPath); break; }
+
+        this.generatedPaths.push(segment.audioPath);
+        const timing = buildSentenceTiming(sentence, startMs, segment.durationMs);
+        this.cumulativeMs += segment.durationMs;
         this.nextGenIndex++;
 
-        const result = await this.synthesizeOne(this.sentences[idx]);
-        if (result) results.set(idx, result);
-
-        this.signal.notify(); // wake flusher + other workers
+        this.readySegments.push({ index: sentence.index, timing, path: segment.audioPath });
+        this.playNextReady();
+      } catch (e) {
+        if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
+        break;
       }
-    };
-
-    const flusher = async () => {
-      while (!this.cancelled && nextFlushIdx < this.sentences.length) {
-        // Flush as many in-order results as possible
-        while (results.has(nextFlushIdx)) {
-          const r = results.get(nextFlushIdx)!;
-          results.delete(nextFlushIdx);
-          nextFlushIdx++;
-
-          const timing = buildSentenceTiming(r.sentence, this.cumulativeMs, r.durationMs);
-          this.cumulativeMs += r.durationMs;
-          this.readySegments.push({ index: r.sentence.index, timing, path: r.audioPath });
-          this.playNextReady();
-        }
-
-        if (nextFlushIdx >= this.sentences.length) break;
-        await this.signal.wait();
-      }
-    };
-
-    const workers = Array.from({ length: CONCURRENCY }, () => worker());
-    await Promise.all([...workers, flusher()]);
+    }
 
     this.running = false;
   }
@@ -165,7 +119,8 @@ export class TTSBuffer {
     this.cancelled = true;
     this.running = false;
     this.isPlaying = false;
-    this.signal.notify(); // unblock all waiters
+    this.loopSignal?.();
+    this.loopSignal = null;
     this.completionSub?.remove();
     this.completionSub = null;
     this.errorSub?.remove();
