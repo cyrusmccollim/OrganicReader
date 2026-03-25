@@ -5,7 +5,6 @@ import { detectLanguage } from '../services/tts/LanguageDetector';
 import { segmentText, Sentence } from '../services/tts/TextSegmenter';
 import { SentenceTiming } from '../services/tts/TimingAccumulator';
 import { TTSBuffer, BufferSegment } from '../services/tts/TTSBuffer';
-import { cleanTmpDir } from '../services/tts/TTSEngine';
 import { SimpleAudio } from '../services/tts/SimpleAudio';
 import { usePlayback } from './PlaybackContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -181,10 +180,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await SimpleAudio.stop();
-      const [, alreadyDownloaded] = await Promise.all([
-        cleanTmpDir(),
-        isDownloadedAsync(entry),
-      ]);
+      const alreadyDownloaded = await isDownloadedAsync(entry);
       if (!alreadyDownloaded) {
         setTtsState('downloading');
         setDownloadLanguage(entry.voiceLabel);

@@ -13,6 +13,12 @@ let tmpDirReady = false;
 
 const TMP_DIR = `${RNFS.CachesDirectoryPath}/tts-tmp`;
 
+// Incremented on every flush/cancel. synthesize() checks this before and after
+// the native call — if it changed, the result is stale and gets discarded.
+let generationEpoch = 0;
+export function bumpEpoch(): number { return ++generationEpoch; }
+export function currentEpoch(): number { return generationEpoch; }
+
 async function ensureTmpDir(): Promise<void> {
   if (tmpDirReady) return;
   if (!await RNFS.exists(TMP_DIR)) await RNFS.mkdir(TMP_DIR);
@@ -24,13 +30,21 @@ async function ensureTmpDir(): Promise<void> {
 export async function synthesize(
   text: string,
   sampleRate: number,
-): Promise<GeneratedSegment> {
+  epoch: number,
+): Promise<GeneratedSegment | null> {
+  if (generationEpoch !== epoch) return null;
   await ensureTmpDir();
 
   const outPath = `${TMP_DIR}/seg_${Date.now()}_${segmentCounter++}.wav`;
 
   const savedPath: string = await TTSManager.generateAndSave(text, outPath, 'wav');
   const actualPath = savedPath ?? outPath;
+
+  // Stale result — another flush happened while we were synthesizing
+  if (generationEpoch !== epoch) {
+    await RNFS.unlink(actualPath).catch(() => {});
+    return null;
+  }
 
   const durationMs = await readWavDurationMs(actualPath, sampleRate);
   return { durationMs, audioPath: actualPath, sampleRate };
