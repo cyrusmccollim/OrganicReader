@@ -48,6 +48,56 @@ import {
   Tick01Icon,
 } from 'hugeicons-react-native';
 
+// ── Silhouette sprite avatar ──────────────────────────────────────────────────
+// Sprite: 2400×808, 2 rows × 6 cols, alternating M/F (index 0=M,1=F,2=M…)
+const SPRITE = require('../assets/set-grey-silhouette-avatars.png');
+const SPRITE_COLS = 6;
+const SPRITE_CELL_W = 400;
+const SPRITE_CELL_H = 404;
+const AVATAR_SIZE = 48;
+const SCALE = AVATAR_SIZE / SPRITE_CELL_W;
+
+const FEMALE_FIRSTS = new Set([
+  'amanda','elise','priya','olivia','luna','mei','sophie','clara',
+  'alba','jenny','cori','lada','olena','mirka','lili','anna','berta',
+  'femke','lotte','gosia','irina','natia','linh','sita','paola','eva','kerstin',
+]);
+
+const MALE_FRAMES   = [0, 2, 4, 7, 9, 11];
+const FEMALE_FRAMES = [1, 3, 5, 6, 8, 10];
+
+function spriteIndexForVoice(voiceLabel: string): number {
+  const first = voiceLabel.split(/[\s(]/)[0].toLowerCase();
+  const isFemale = FEMALE_FIRSTS.has(first);
+  let h = 0;
+  for (let i = 0; i < voiceLabel.length; i++) h = (Math.imul(31, h) + voiceLabel.charCodeAt(i)) | 0;
+  const pool = isFemale ? FEMALE_FRAMES : MALE_FRAMES;
+  return pool[Math.abs(h) % pool.length];
+}
+
+function SilhouetteAvatar({ voiceLabel, borderColor }: { voiceLabel: string; borderColor: string }) {
+  const frameIdx = spriteIndexForVoice(voiceLabel);
+  const col = frameIdx % SPRITE_COLS;
+  const row = Math.floor(frameIdx / SPRITE_COLS);
+  const offsetX = -(col * SPRITE_CELL_W * SCALE);
+  const offsetY = -(row * SPRITE_CELL_H * SCALE);
+  return (
+    <View style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, borderWidth: 1, borderColor, overflow: 'hidden' }}>
+      <Image
+        source={SPRITE}
+        style={{
+          width: SPRITE_CELL_W * SCALE * SPRITE_COLS,
+          height: SPRITE_CELL_H * SCALE * 2,
+          position: 'absolute',
+          left: offsetX,
+          top: offsetY,
+        }}
+      />
+    </View>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Props {
   file: LibraryFile;
   onBack: () => void;
@@ -928,18 +978,9 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
                         onPress={() => { setVoice(m); setShowVoicePicker(false); setVoiceSearch(''); }}
                         activeOpacity={0.7}
                       >
-                        <Image
-                          source={{ uri: `https://api.dicebear.com/9.x/personas/png?seed=${encodeURIComponent(m.voiceLabel)}&size=80` }}
-                          style={[
-                            styles.voiceAvatar,
-                            {
-                              borderColor: isSelected
-                                ? theme.colors.primary
-                                : isDownloaded
-                                ? theme.colors.primary + '60'
-                                : theme.colors.border,
-                            },
-                          ]}
+                        <SilhouetteAvatar
+                          voiceLabel={m.voiceLabel}
+                          borderColor={isSelected ? theme.colors.primary : isDownloaded ? theme.colors.primary + '60' : theme.colors.border}
                         />
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
