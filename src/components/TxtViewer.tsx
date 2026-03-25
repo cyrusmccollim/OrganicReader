@@ -51,17 +51,25 @@ const ActiveSentence = React.memo(function ActiveSentence({
   onPress: () => void;
 }) {
   const [wordIdx, setWordIdx] = useState(0);
+  const wordIdxRef = useRef(0);
 
   useEffect(() => {
+    wordIdxRef.current = 0;
     setWordIdx(0);
+    const wt = timing.wordTimings;
     const sub = SimpleAudio.onProgress((posMs) => {
       const absoluteMs = timing.startMs + posMs;
-      let w = 0;
-      for (let j = 0; j < timing.wordTimings.length; j++) {
-        if (absoluteMs >= timing.wordTimings[j].startMs) w = j;
-        else break;
+      // Binary search for the active word
+      let lo = 0, hi = wt.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (wt[mid].startMs <= absoluteMs) lo = mid;
+        else hi = mid - 1;
       }
-      setWordIdx(w);
+      if (lo !== wordIdxRef.current) {
+        wordIdxRef.current = lo;
+        setWordIdx(lo);
+      }
     });
     return () => sub.remove();
   }, [timing]);
