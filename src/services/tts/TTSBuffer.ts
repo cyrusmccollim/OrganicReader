@@ -19,6 +19,20 @@ interface SynthResult {
   sentence: Sentence;
 }
 
+/** Simple broadcast: all current waiters are woken on notify(). */
+class Signal {
+  private waiters: Array<() => void> = [];
+
+  wait(): Promise<void> {
+    return new Promise(resolve => this.waiters.push(resolve));
+  }
+
+  notify() {
+    const w = this.waiters.splice(0);
+    w.forEach(fn => fn());
+  }
+}
+
 export class TTSBuffer {
   private sentences: Sentence[];
   private sampleRate: number;
@@ -34,17 +48,10 @@ export class TTSBuffer {
   private isPlaying = false;
   private generatedPaths: string[] = [];
 
-  private loopSignal: (() => void) | null = null;
+  private signal = new Signal();
 
   private completionSub: EmitterSubscription | null = null;
   private errorSub: EmitterSubscription | null = null;
-
-  // Parallel synthesis: inflight promises keyed by sentence array index
-  private inflight = new Map<number, Promise<void>>();
-  // Resolved results waiting to be flushed in order
-  private results = new Map<number, SynthResult>();
-  // Next index to flush from results (in-order)
-  private nextFlushIndex = 0;
 
   constructor(
     sentences: Sentence[],
@@ -61,11 +68,13 @@ export class TTSBuffer {
   start(fromIndex: number, fromMs: number) {
     this.cancelled = false;
     this.nextGenIndex = fromIndex;
-    this.nextFlushIndex = fromIndex;
     this.cumulativeMs = fromMs;
 
     this.completionSub = SimpleAudio.onComplete(() => {
-      if (!this.cancelled) this.handleComplete();
+      if (this.cancelled) return;
+      this.isPlaying = false;
+      this.signal.notify();
+      this.playNextReady();
     });
     this.errorSub = SimpleAudio.onError((err) => {
       if (!this.cancelled) this.onError(new Error(err));
@@ -74,18 +83,11 @@ export class TTSBuffer {
     this.runLoop();
   }
 
-  private handleComplete() {
-    this.isPlaying = false;
-    this.loopSignal?.();
-    this.playNextReady();
-  }
-
   private playNextReady() {
     if (this.isPlaying || this.readySegments.length === 0 || this.cancelled) return;
     const next = this.readySegments.shift()!;
     this.isPlaying = true;
 
-    // Fire onSegmentReady BEFORE play so UI highlights the correct sentence immediately
     this.onSegmentReady({ sentenceIndex: next.index, timing: next.timing, audioPath: next.path });
     SimpleAudio.play(next.path).catch((e) => {
       this.isPlaying = false;
@@ -93,19 +95,18 @@ export class TTSBuffer {
     });
   }
 
-  /** Flush resolved results in-order into readySegments */
-  private flushResults() {
-    while (this.results.has(this.nextFlushIndex)) {
-      const r = this.results.get(this.nextFlushIndex)!;
-      this.results.delete(this.nextFlushIndex);
-      this.inflight.delete(this.nextFlushIndex);
-      this.nextFlushIndex++;
-
-      const timing = buildSentenceTiming(r.sentence, this.cumulativeMs, r.durationMs);
-      this.cumulativeMs += r.durationMs;
-
-      this.readySegments.push({ index: r.sentence.index, timing, path: r.audioPath });
-      this.playNextReady();
+  private async synthesizeOne(sentence: Sentence): Promise<SynthResult | undefined> {
+    try {
+      const segment = await synthesize(sentence.ttsText, this.sampleRate);
+      if (this.cancelled) {
+        deleteTempFile(segment.audioPath).catch(() => {});
+        return undefined;
+      }
+      this.generatedPaths.push(segment.audioPath);
+      return { audioPath: segment.audioPath, durationMs: segment.durationMs, sentence };
+    } catch (e) {
+      if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
+      return undefined;
     }
   }
 
@@ -113,57 +114,49 @@ export class TTSBuffer {
     if (this.running || this.cancelled) return;
     this.running = true;
 
-    while (!this.cancelled && this.nextGenIndex < this.sentences.length) {
-      // Throttle: don't build up more than LOOKAHEAD ready segments
-      if (this.readySegments.length >= LOOKAHEAD) {
-        await new Promise<void>(resolve => { this.loopSignal = resolve; });
-        this.loopSignal = null;
-        continue;
+    const results = new Map<number, SynthResult>();
+    let nextFlushIdx = this.nextGenIndex;
+
+    const worker = async () => {
+      while (!this.cancelled) {
+        // Back off while ready queue is full
+        while (this.readySegments.length >= LOOKAHEAD && !this.cancelled) {
+          await this.signal.wait();
+        }
+        if (this.cancelled) break;
+
+        const idx = this.nextGenIndex;
+        if (idx >= this.sentences.length) break;
+        this.nextGenIndex++;
+
+        const result = await this.synthesizeOne(this.sentences[idx]);
+        if (result) results.set(idx, result);
+
+        this.signal.notify(); // wake flusher + other workers
       }
+    };
 
-      // Spawn up to CONCURRENCY parallel synthesis calls
-      while (
-        this.inflight.size < CONCURRENCY &&
-        this.nextGenIndex < this.sentences.length &&
-        this.readySegments.length + this.inflight.size < LOOKAHEAD
-      ) {
-        const idx = this.nextGenIndex++;
-        const sentence = this.sentences[idx];
+    const flusher = async () => {
+      while (!this.cancelled && nextFlushIdx < this.sentences.length) {
+        // Flush as many in-order results as possible
+        while (results.has(nextFlushIdx)) {
+          const r = results.get(nextFlushIdx)!;
+          results.delete(nextFlushIdx);
+          nextFlushIdx++;
 
-        const job = synthesize(sentence.ttsText, this.sampleRate)
-          .then(segment => {
-            if (this.cancelled) {
-              deleteTempFile(segment.audioPath).catch(() => {});
-              return;
-            }
-            this.generatedPaths.push(segment.audioPath);
-            this.results.set(idx, {
-              audioPath: segment.audioPath,
-              durationMs: segment.durationMs,
-              sentence,
-            });
-          })
-          .catch(e => {
-            if (!this.cancelled) this.onError(e instanceof Error ? e : new Error(String(e)));
-          });
+          const timing = buildSentenceTiming(r.sentence, this.cumulativeMs, r.durationMs);
+          this.cumulativeMs += r.durationMs;
+          this.readySegments.push({ index: r.sentence.index, timing, path: r.audioPath });
+          this.playNextReady();
+        }
 
-        this.inflight.set(idx, job);
+        if (nextFlushIdx >= this.sentences.length) break;
+        await this.signal.wait();
       }
+    };
 
-      // Wait for at least one inflight job to finish
-      if (this.inflight.size > 0) {
-        await Promise.race([...this.inflight.values()]);
-      }
-
-      this.flushResults();
-      if (this.cancelled) break;
-    }
-
-    // Drain remaining inflight jobs
-    if (this.inflight.size > 0) {
-      await Promise.all([...this.inflight.values()]);
-      this.flushResults();
-    }
+    const workers = Array.from({ length: CONCURRENCY }, () => worker());
+    await Promise.all([...workers, flusher()]);
 
     this.running = false;
   }
@@ -172,8 +165,7 @@ export class TTSBuffer {
     this.cancelled = true;
     this.running = false;
     this.isPlaying = false;
-    this.loopSignal?.();
-    this.loopSignal = null;
+    this.signal.notify(); // unblock all waiters
     this.completionSub?.remove();
     this.completionSub = null;
     this.errorSub?.remove();
@@ -183,10 +175,7 @@ export class TTSBuffer {
     this.generatedPaths = [];
     this.readySegments = [];
     this.nextGenIndex = 0;
-    this.nextFlushIndex = 0;
     this.cumulativeMs = 0;
-    this.inflight.clear();
-    this.results.clear();
 
     SimpleAudio.stop().catch(() => {});
     paths.forEach(p => deleteTempFile(p).catch(() => {}));
