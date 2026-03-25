@@ -1,7 +1,7 @@
 import RNFS from 'react-native-fs';
 import { unzip } from 'react-native-zip-archive';
 import TTSManager from 'react-native-sherpa-onnx-offline-tts';
-import { ALL_MODELS, TTSModelEntry, onnxUrl, tokensUrl, meloZipUrl, ESPEAK_ZIP_URL } from '../../config/ttsModels';
+import { ALL_MODELS, TTSModelEntry, onnxUrl, tokensUrl, meloFileUrl, ESPEAK_ZIP_URL } from '../../config/ttsModels';
 
 const MODELS_DIR = `${RNFS.DocumentDirectoryPath}/tts-models`;
 const ESPEAK_DIR = `${MODELS_DIR}/espeak-ng-data`;
@@ -154,6 +154,19 @@ async function ensurePiper(
 
 // ── MeloTTS ensure ───────────────────────────────────────────────────────────
 
+async function ensureMeloDictDir(entry: TTSModelEntry, dir: string): Promise<void> {
+  if (!entry.dictDirName) return;
+  const dictDir = `${dir}/${entry.dictDirName}`;
+  if (await RNFS.exists(dictDir)) return;
+
+  // Download dict as zip from OrganicReaderAssets, since it's a directory tree
+  const ASSETS = 'https://cyrusmccollim.github.io/OrganicReaderAssets';
+  const archive = `${dir}/dict.zip`;
+  await downloadFile(`${ASSETS}/${entry.voiceDirName}-dict.zip`, archive, 1_000);
+  await unzip(archive, dir);
+  await RNFS.unlink(archive).catch(() => {});
+}
+
 async function ensureMelo(
   entry: TTSModelEntry,
   onProgress?: (fraction: number) => void,
@@ -161,18 +174,43 @@ async function ensureMelo(
   const dir = voiceDir(entry);
 
   if (!await isMeloDownloaded(entry)) {
-    await ensureDir(MODELS_DIR);
-    const archive = `${MODELS_DIR}/${entry.voiceDirName}.zip`;
-    await RNFS.unlink(archive).catch(() => {});
-    await downloadFile(meloZipUrl(entry), archive, 1_000_000, p => onProgress?.(p * 0.9));
+    await ensureDir(dir);
 
-    throwIfCancelled();
-    await unzip(archive, MODELS_DIR);
-    await RNFS.unlink(archive).catch(() => {});
-
-    if (!await RNFS.exists(`${dir}/${entry.modelOnnxName}`)) {
-      throw new Error(`MeloTTS extraction failed — ${entry.modelOnnxName} not found`);
+    // Download model.onnx (bulk of the download)
+    const modelPath = `${dir}/${entry.modelOnnxName}`;
+    if (!await RNFS.exists(modelPath)) {
+      await downloadFile(meloFileUrl(entry, entry.modelOnnxName), modelPath, 1_000_000, p => onProgress?.(p * 0.85));
     }
+
+    // Download tokens.txt
+    const tPath = `${dir}/tokens.txt`;
+    if (!await RNFS.exists(tPath)) {
+      await downloadFile(meloFileUrl(entry, 'tokens.txt'), tPath, 100);
+    }
+    onProgress?.(0.88);
+
+    // Download lexicon
+    if (entry.lexiconName) {
+      const lexPath = `${dir}/${entry.lexiconName}`;
+      if (!await RNFS.exists(lexPath)) {
+        await downloadFile(meloFileUrl(entry, entry.lexiconName), lexPath, 1_000);
+      }
+    }
+    onProgress?.(0.90);
+
+    // Download extra files (FSTs etc)
+    if (entry.extraFiles) {
+      for (const f of entry.extraFiles) {
+        const fPath = `${dir}/${f}`;
+        if (!await RNFS.exists(fPath)) {
+          await downloadFile(meloFileUrl(entry, f), fPath, 100);
+        }
+      }
+    }
+    onProgress?.(0.93);
+
+    // Download dict directory (Chinese only — needs zip from OrganicReaderAssets)
+    await ensureMeloDictDir(entry, dir);
     onProgress?.(0.95);
   }
 
