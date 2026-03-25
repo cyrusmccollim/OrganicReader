@@ -267,14 +267,10 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
     setActiveSentenceIndex(index);
     setProgressFraction(sents[index].charStart / totalCharsRef.current);
 
-    // Fast/semi-fast path: buffer handles it without a full restart.
-    // - Already synthesized: plays instantly.
-    // - Ahead of current gen: sets pendingSeekIndex, plays as soon as synthesis reaches it.
-    if (bufferRef.current?.seekTo(index)) {
-      return;
-    }
+    // Fast path: already synthesized — plays instantly.
+    if (bufferRef.current?.seekTo(index)) return;
 
-    // Slow path: target is behind current generation — must flush and restart.
+    // Not cached — flush and restart synthesis directly from target.
     setTtsState('seeking');
     startBuffer(index);
   }, [startBuffer]);
