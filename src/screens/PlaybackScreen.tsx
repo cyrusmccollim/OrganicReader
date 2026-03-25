@@ -219,7 +219,7 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     autoSkip, updateAutoSkip, playerSettings, updatePlayerSettings,
   } = usePlayback();
   const {
-    ttsState, downloadProgress, downloadLanguage,
+    ttsState, errorMessage, downloadProgress, downloadLanguage,
     sentences, activeSentenceIndex, activeSentenceTiming,
     progressFraction, totalEstimatedMs, totalChars,
     downloadedModels, activeModelEntry,
@@ -599,6 +599,21 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
             activeOpacity={0.7}
           >
             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── Error Overlay ── */}
+      {ttsState === 'error' && errorMessage && (
+        <View style={[styles.downloadOverlay, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
+          <Text style={{ color: '#ff6b6b', fontSize: 28, marginBottom: 8 }}>!</Text>
+          <Text style={[styles.downloadText, { color: '#fff' }]}>{errorMessage}</Text>
+          <TouchableOpacity
+            onPress={stop}
+            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Dismiss</Text>
           </TouchableOpacity>
         </View>
       )}

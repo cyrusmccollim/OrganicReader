@@ -76,9 +76,16 @@ function patchAndroid() {
     );
   }
 
+  // Fix sid=0 in real-time generateAudio
   src = src.replace(
     /val audio = tts!!\.generate\(text = processed, sid = 0,/g,
     'val audio = tts!!.generate(text = processed, sid = currentSpeakerId,',
+  );
+
+  // Fix sid=0 in generateAndSave (uses local `engine` variable, positional args)
+  src = src.replace(
+    /engine\.generate\(processed, 0, 1\.0f\)/g,
+    'engine.generate(processed, currentSpeakerId, 1.0f)',
   );
 
   fs.writeFileSync(target, src, 'utf8');
