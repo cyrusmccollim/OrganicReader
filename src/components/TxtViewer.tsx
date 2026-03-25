@@ -147,20 +147,14 @@ const TxtViewerInner = forwardRef<ViewerHandle, Props>(({
       .catch(e => setError('Could not read file: ' + e.message));
   }, [uri, textProp, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll: scroll whenever active sentence moves outside the comfortable zone.
-  // Scrolls both UP (sentence near top) and DOWN (sentence near bottom).
+  // Auto-scroll: keep the active sentence vertically centered.
   useEffect(() => {
     if (!ttsMode || activeSentenceIndex === undefined) return;
     const sentY = sentenceLayoutsRef.current[activeSentenceIndex];
     if (sentY === undefined) return;
-    const offset = scrollOffsetRef.current;
     const height = scrollViewHeightRef.current;
     if (height === 0) return;
-    const tooHigh = sentY < offset + height * 0.15;
-    const tooLow  = sentY > offset + height * 0.65;
-    if (tooHigh || tooLow) {
-      scrollRef.current?.scrollTo({ y: Math.max(0, sentY - height * 0.30), animated: true });
-    }
+    scrollRef.current?.scrollTo({ y: Math.max(0, sentY - height * 0.5), animated: true });
   }, [ttsMode, activeSentenceIndex]);
 
   // Compute match positions for search
