@@ -4,9 +4,12 @@ import AVFoundation
 @objc(SimpleAudio)
 class SimpleAudio: RCTEventEmitter {
 
+  // Current player and a pre-warmed next player for gapless handoff
   private var player: AVAudioPlayer?
+  private var nextPlayer: AVAudioPlayer?
   private var rate: Float = 1.0
-  private var progressTimer: Timer?
+  // Progress timer runs on the audio queue — no main-thread contention with UI
+  private var progressTimer: DispatchSourceTimer?
   private var sessionActive = false
   private let queue = DispatchQueue(label: "SimpleAudio", qos: .userInitiated)
 
@@ -29,16 +32,26 @@ class SimpleAudio: RCTEventEmitter {
       do {
         self.ensureSession()
 
-        let url = filePath.hasPrefix("/") ? URL(fileURLWithPath: filePath) : URL(fileURLWithPath: filePath.replacingOccurrences(of: "file://", with: ""))
+        let url = filePath.hasPrefix("/")
+          ? URL(fileURLWithPath: filePath)
+          : URL(fileURLWithPath: filePath.replacingOccurrences(of: "file://", with: ""))
 
         self.stopProgressTimer()
-        self.player?.stop()
 
-        let p = try AVAudioPlayer(contentsOf: url)
-        p.enableRate = true
+        // Re-use pre-warmed player if it matches this path, otherwise create fresh
+        let p: AVAudioPlayer
+        if let warm = self.nextPlayer, warm.url == url {
+          p = warm
+          self.nextPlayer = nil
+        } else {
+          self.player?.stop()
+          p = try AVAudioPlayer(contentsOf: url)
+          p.enableRate = true
+          p.prepareToPlay()
+        }
+
         p.rate = self.rate
         p.delegate = self
-        p.prepareToPlay()
         p.play()
         self.player = p
 
@@ -46,6 +59,27 @@ class SimpleAudio: RCTEventEmitter {
         resolve(nil)
       } catch {
         reject("AUDIO_ERROR", error.localizedDescription, error)
+      }
+    }
+  }
+
+  /// Pre-warm the next segment's player so play() has zero decode latency.
+  @objc(preWarm:resolver:rejecter:)
+  func preWarm(_ filePath: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    queue.async {
+      do {
+        let url = filePath.hasPrefix("/")
+          ? URL(fileURLWithPath: filePath)
+          : URL(fileURLWithPath: filePath.replacingOccurrences(of: "file://", with: ""))
+        let p = try AVAudioPlayer(contentsOf: url)
+        p.enableRate = true
+        p.rate = self.rate
+        p.prepareToPlay()  // loads buffers + acquires hardware in background
+        self.nextPlayer = p
+        resolve(nil)
+      } catch {
+        // Pre-warm failure is non-fatal — play() will create fresh player
+        resolve(nil)
       }
     }
   }
@@ -74,6 +108,8 @@ class SimpleAudio: RCTEventEmitter {
       self.stopProgressTimer()
       self.player?.stop()
       self.player = nil
+      self.nextPlayer?.stop()
+      self.nextPlayer = nil
       resolve(nil)
     }
   }
@@ -91,6 +127,7 @@ class SimpleAudio: RCTEventEmitter {
     queue.async {
       self.rate = Float(newRate)
       self.player?.rate = self.rate
+      self.nextPlayer?.rate = self.rate
       resolve(nil)
     }
   }
@@ -103,32 +140,37 @@ class SimpleAudio: RCTEventEmitter {
     }
   }
 
+  // 100ms ticks on the audio queue — faster highlighting, no main-thread pressure
   private func startProgressTimer() {
     stopProgressTimer()
-    DispatchQueue.main.async {
-      self.progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-        guard let self = self, let p = self.player, p.isPlaying else { return }
-        self.sendEvent(withName: "AudioProgress", body: ["position": p.currentTime * 1000])
-      }
+    let t = DispatchSource.makeTimerSource(queue: queue)
+    t.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
+    t.setEventHandler { [weak self] in
+      guard let self = self, let p = self.player, p.isPlaying else { return }
+      self.sendEvent(withName: "AudioProgress", body: ["position": p.currentTime * 1000])
     }
+    t.resume()
+    progressTimer = t
   }
 
   private func stopProgressTimer() {
-    DispatchQueue.main.async {
-      self.progressTimer?.invalidate()
-      self.progressTimer = nil
-    }
+    progressTimer?.cancel()
+    progressTimer = nil
   }
 }
 
 extension SimpleAudio: AVAudioPlayerDelegate {
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-    stopProgressTimer()
-    sendEvent(withName: "AudioPlaybackComplete", body: nil)
+    queue.async {
+      self.stopProgressTimer()
+      self.sendEvent(withName: "AudioPlaybackComplete", body: nil)
+    }
   }
 
   func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-    stopProgressTimer()
-    sendEvent(withName: "AudioPlaybackError", body: ["error": error?.localizedDescription ?? "decode error"])
+    queue.async {
+      self.stopProgressTimer()
+      self.sendEvent(withName: "AudioPlaybackError", body: ["error": error?.localizedDescription ?? "decode error"])
+    }
   }
 }

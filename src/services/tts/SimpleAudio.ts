@@ -8,6 +8,7 @@ const Native = NativeModules.SimpleAudio as {
   seekTo(ms: number): Promise<void>;
   setRate(rate: number): Promise<void>;
   getPosition(): Promise<number>;
+  preWarm(filePath: string): Promise<void>;
 };
 
 export const SimpleAudio = {
@@ -18,6 +19,7 @@ export const SimpleAudio = {
   seekTo: (ms: number) => Native.seekTo(ms),
   setRate: (rate: number) => Native.setRate(rate),
   getPosition: (): Promise<number> => Native.getPosition(),
+  preWarm: (filePath: string) => Native.preWarm(filePath).catch(() => {}),
   onComplete: (cb: () => void): EmitterSubscription =>
     DeviceEventEmitter.addListener('AudioPlaybackComplete', cb),
   onProgress: (cb: (position: number) => void): EmitterSubscription =>

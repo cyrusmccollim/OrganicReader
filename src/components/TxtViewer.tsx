@@ -54,13 +54,16 @@ const ActiveSentence = React.memo(function ActiveSentence({
 
   useEffect(() => {
     setWordIdx(0);
+    const wt = timing.wordTimings;
     const sub = SimpleAudio.onProgress((posMs) => {
       // Lead offset: highlight the next word ~200ms early so it feels in sync
       const absoluteMs = timing.startMs + posMs + 200;
-      let w = 0;
-      for (let j = 0; j < timing.wordTimings.length; j++) {
-        if (absoluteMs >= timing.wordTimings[j].startMs) w = j;
-        else break;
+      // Binary search — O(log n) vs O(n) linear scan
+      let lo = 0, hi = wt.length - 1, w = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        if (wt[mid].startMs <= absoluteMs) { w = mid; lo = mid + 1; }
+        else hi = mid - 1;
       }
       setWordIdx(w);
     });
