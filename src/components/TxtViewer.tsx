@@ -56,26 +56,38 @@ const ActiveSentence = React.memo(function ActiveSentence({
 
   // Split into tokens (words at even indices, spaces at odd) once per displayText change.
   const tokens = useMemo(() => displayText.split(/(\s+)/), [displayText]);
-  // Non-space word count for the fraction calculation.
-  const wordCount = Math.ceil(tokens.length / 2);
 
-  // Refs so the single progress subscription always sees current values.
+  // Per-word start fractions based on character length — short words ("the", "a") get less
+  // time than long words ("specifically"), so the highlight doesn't stall on function words.
+  const wordStartFractions = useMemo(() => {
+    const words = tokens.filter((_, i) => i % 2 === 0);
+    const lens = words.map(w => Math.max(w.length, 1));
+    const total = lens.reduce((s, l) => s + l, 0);
+    let cum = 0;
+    return lens.map(l => { const f = cum; cum += l / total; return f; });
+  }, [tokens]);
+
+  // Refs so the single progress subscription always sees current values without re-subscribing.
   const durationMsRef = useRef(timing.durationMs);
-  const wordCountRef = useRef(wordCount);
+  const fractionsRef = useRef(wordStartFractions);
   durationMsRef.current = timing.durationMs;
-  wordCountRef.current = wordCount;
+  fractionsRef.current = wordStartFractions;
 
   // Reset to word 0 when a new sentence becomes active.
   useEffect(() => { setWordIdx(0); }, [timing]);
 
-  // Subscribe once on mount. Uses posMs / durationMs fraction across display words.
-  // This is correct regardless of auto-skip word-count differences between ttsText and displayText.
+  // Subscribe once on mount. Uses char-proportional fractions so short words don't stall
+  // the highlight while audio has already moved to the next word.
   useEffect(() => {
     const sub = SimpleAudio.onProgress((posMs) => {
       const dur = durationMsRef.current;
-      const count = wordCountRef.current;
-      if (dur <= 0 || count === 0) return;
-      const next = Math.min(Math.floor((posMs / dur) * count), count - 1);
+      if (dur <= 0) return;
+      const frac = posMs / dur;
+      const fracs = fractionsRef.current;
+      let next = 0;
+      for (let i = fracs.length - 1; i >= 0; i--) {
+        if (fracs[i] <= frac) { next = i; break; }
+      }
       setWordIdx(prev => (prev === next ? prev : next));
     });
     return () => sub.remove();
