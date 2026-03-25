@@ -156,6 +156,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     const detectedLang = detectLanguage(rawText);
     const entry = overrideEntryRef.current ?? findModel(detectedLang);
+    setActiveModelEntry(entry);
 
     const segs = segmentText(rawText, autoSkip);
     setSentences(segs);
@@ -212,7 +213,13 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
   }, [flushBuffer, onSegmentReady, onBufferError]);
 
   const play = useCallback(async () => {
-    if (ttsState === 'idle' || ttsState === 'error' || ttsState === 'downloading' || ttsState === 'loading') return;
+    if (ttsState === 'downloading' || ttsState === 'loading') return;
+
+    // Retry init on error or idle (e.g. after failed Melo init)
+    if ((ttsState === 'idle' || ttsState === 'error') && rawTextRef.current) {
+      initTTS(rawTextRef.current);
+      return;
+    }
 
     if (ttsState === 'ready' || !bufferRef.current) {
       startBuffer(activeSentenceIndex);
@@ -221,7 +228,7 @@ export function TTSProvider({ children }: { children: React.ReactNode }) {
 
     await SimpleAudio.resume();
     setTtsState('playing');
-  }, [ttsState, activeSentenceIndex, startBuffer]);
+  }, [ttsState, activeSentenceIndex, startBuffer, initTTS]);
 
   const pause = useCallback(async () => {
     await SimpleAudio.pause();

@@ -15,7 +15,9 @@ export interface TTSModelEntry {
 
 // Unique key for a model entry (voiceDirName alone is not unique for melo accents)
 export function modelKey(entry: TTSModelEntry): string {
-  return entry.speakerId ? `${entry.voiceDirName}:${entry.speakerId}` : entry.voiceDirName;
+  return entry.speakerId != null && entry.speakerId !== 0
+    ? `${entry.voiceDirName}:${entry.speakerId}`
+    : entry.voiceDirName;
 }
 
 const HF = 'https://huggingface.co/csukuangfj';
