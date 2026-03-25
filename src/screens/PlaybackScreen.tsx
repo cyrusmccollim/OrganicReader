@@ -504,13 +504,19 @@ export function PlaybackScreen({ file, onBack, onBringToChat }: Props) {
     initTTS(text);
   }, [initTTS]);
 
+  // On first play after opening, resume from saved position instead of sentence 0.
+  const hasResumedRef = useRef(false);
+
   const handlePlayPause = useCallback(async () => {
     if (isPlaying) {
       await pause();
+    } else if (!hasResumedRef.current && file.progress > 0 && ttsState === 'ready') {
+      hasResumedRef.current = true;
+      seekToFraction(file.progress);
     } else {
       await play();
     }
-  }, [isPlaying, play, pause]);
+  }, [isPlaying, play, pause, ttsState, seekToFraction, file.progress]);
 
   const handleSpeedChange = useCallback(async (speed: number) => {
     updatePlayerSettings({ playbackSpeed: speed });
